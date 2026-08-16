@@ -66,12 +66,16 @@ const Advice = {
   byPair(months, skipGoals = false) {
     const map = new Map();
     for (const t of Store.state.transactions) {
-      if (t.type !== 'expense') continue;
+      // Перевод на сберегательный счёт считается расходом, как в таблице.
+      const asSavings = savingsFlow(t) > 0;
+      if (t.type !== 'expense' && !asSavings) continue;
       // Пополнения целей — это осознанные накопления, а не перерасход.
       if (skipGoals && t.goalId) continue;
       const k = t.date.slice(0, 7);
       if (!months.includes(k)) continue;
-      const key = t.category + ' / ' + (t.subcategory || '');
+      const key = asSavings
+        ? 'Сбережения / На сберегательные счета'
+        : t.category + ' / ' + (t.subcategory || '');
       if (!map.has(key)) map.set(key, Object.fromEntries(months.map((m) => [m, 0])));
       map.get(key)[k] += t.amount;
     }

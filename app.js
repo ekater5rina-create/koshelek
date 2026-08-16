@@ -55,20 +55,42 @@ const txOfMonth = (key) =>
     .filter((t) => t.date.slice(0, 7) === key)
     .sort((a, b) => (a.date === b.date ? b.createdAt - a.createdAt : a.date < b.date ? 1 : -1));
 
+/* Как в таблице: перевод на сберегательный счёт — это расход месяца
+   (строка «Сбережения»), а снятие обратно — доход («Трансфер с сбережений»).
+   Возвращает +1 для отложенного, −1 для снятого, 0 для обычного перевода. */
+const accIsSavings = (id) => !!accountById(id)?.savings;
+function savingsFlow(t) {
+  if (t.type !== 'transfer') return 0;
+  const from = accIsSavings(t.accountId), to = accIsSavings(t.toAccountId);
+  if (!from && to) return 1;
+  if (from && !to) return -1;
+  return 0;
+}
+const SAVINGS_IN = 'Сбережения';
+const SAVINGS_OUT = 'Трансфер с сбережений';
+
 function monthTotals(key) {
   let income = 0, expense = 0;
   for (const t of txOfMonth(key)) {
     if (t.type === 'income') income += t.amount;
     else if (t.type === 'expense') expense += t.amount;
+    else {
+      const f = savingsFlow(t);
+      if (f > 0) expense += t.amount;
+      else if (f < 0) income += t.amount;
+    }
   }
   return { income, expense, profit: income - expense };
 }
 
 function byCategory(key, type) {
   const map = new Map();
+  const add = (name, sum) => map.set(name, (map.get(name) || 0) + sum);
   for (const t of txOfMonth(key)) {
-    if (t.type !== type) continue;
-    map.set(t.category, (map.get(t.category) || 0) + t.amount);
+    if (t.type === type) { add(t.category, t.amount); continue; }
+    const f = savingsFlow(t);
+    if (type === 'expense' && f > 0) add(SAVINGS_IN, t.amount);
+    if (type === 'income' && f < 0) add(SAVINGS_OUT, t.amount);
   }
   return [...map.entries()].map(([name, sum]) => ({ name, sum })).sort((a, b) => b.sum - a.sum);
 }

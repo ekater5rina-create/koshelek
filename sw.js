@@ -1,4 +1,4 @@
-const CACHE = 'koshelek-v7';
+const CACHE = 'koshelek-v8';
 const ASSETS = ['./', './index.html', './styles.css', './data.js', './history.js', './goals.js', './plans.js', './planner.js', './nlp.js', './vendor-jsqr.js', './receipt.js', './app.js', './manifest.webmanifest', './icon-180.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {
