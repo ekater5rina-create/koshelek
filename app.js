@@ -45,6 +45,14 @@ function balanceOf(accId) {
 }
 /* Общий счёт — только повседневные деньги. Сбережения считаются отдельно,
    как «Баланс расходов» и «Баланс сбережений» в таблице. */
+/* Сверка кошелька: сколько денег там на самом деле против того, что насчитал учёт.
+   Разница считается один раз, в момент сверки, и хранится как есть — иначе
+   операции, добавленные после сверки, поднимали бы ложную тревогу. */
+function discrepancy(a) {
+  return a.fact ? (a.fact.diff || 0) : 0;
+}
+const accountsWithGap = () => accounts().filter((a) => discrepancy(a) !== 0);
+
 const spendAccounts = () => accounts().filter((a) => !a.savings);
 const savingAccounts = () => accounts().filter((a) => a.savings);
 const totalBalance = () => spendAccounts().reduce((s, a) => s + balanceOf(a.id), 0);
@@ -307,7 +315,11 @@ function renderHomeGoals() {
 
   const tips = buildTips();
   $('#homeAdviceCard').hidden = !tips.length;
-  $('#homeAdvice').innerHTML = tips.map((t) => `<div class="adv"><div class="adv-ic">${t.icon}</div><div>${t.text}</div></div>`).join('');
+  $('#homeAdvice').innerHTML = tips
+    .map((t) => t.gap
+      ? `<button class="adv adv-act" data-gap="${t.gap}"><div class="adv-ic">${t.icon}</div><div>${t.text}<div class="adv-go">Внести операцию ›</div></div></button>`
+      : `<div class="adv"><div class="adv-ic">${t.icon}</div><div>${t.text}</div></div>`)
+    .join('');
 }
 
 /* Подсказки на главной: прогноз месяца, аномалии, статус по целям. */
@@ -315,7 +327,17 @@ function buildTips() {
   const tips = [];
   const key = monthKey(new Date());
 
-  // Напоминание о копии — первым, потерять всю историю дороже любого перерасхода.
+  // Расхождение по кошельку — первым: пока оно есть, все остальные цифры неточны.
+  for (const a of accountsWithGap()) {
+    const d = discrepancy(a);
+    tips.push({
+      icon: '⚠️',
+      gap: a.id,
+      text: `Кошелёк «${esc(a.name)}»: по факту ${money(a.fact.amount)}, а по учёту ${money(a.fact.calc)}. ${d > 0 ? 'Внесите доход' : 'Внесите расход'} на <b>${money(Math.abs(d))}</b>.`,
+    });
+  }
+
+  // Напоминание о копии — потерять всю историю дороже любого перерасхода.
   if (Backup.overdue()) {
     const d = Backup.daysSince();
     tips.push({
@@ -537,11 +559,14 @@ function renderHome() {
 
   $('#accountsRow').innerHTML = spendAccounts().concat(savingAccounts())
     .map(
-      (a) => `<button class="acc-card ${a.savings ? 'is-savings' : ''}" data-acc="${a.id}">
-        <div class="acc-name"><span>${a.icon}</span><span>${esc(a.name)}</span></div>
+      (a) => {
+        const d = discrepancy(a);
+        return `<button class="acc-card ${a.savings ? 'is-savings' : ''} ${d ? 'has-gap' : ''}" data-acc="${a.id}">
+        <div class="acc-name"><span>${a.icon}</span><span>${esc(a.name)}</span>${d ? '<span>⚠️</span>' : ''}</div>
         <div class="acc-sum">${money(balanceOf(a.id))}</div>
-        ${a.savings ? '<div class="acc-tag">сбережения</div>' : ''}
-      </button>`
+        ${d ? `<div class="acc-tag gap">расхождение ${money(Math.abs(d))}</div>` : a.savings ? '<div class="acc-tag">сбережения</div>' : ''}
+      </button>`;
+      }
     )
     .join('') || '<div class="empty">Нет счетов</div>';
 
@@ -925,8 +950,13 @@ function confirmSave() {
       date: d.date, note: d.note, createdAt: Date.now(),
     });
     Store.state.settings.lastAccountId = d.accountId;
+    // Недостающая операция внесена — расхождение закрыто.
+    if (c.reconFor) {
+      const acc = accountById(c.reconFor);
+      if (acc && acc.fact) acc.fact.diff = 0;
+    }
     Store.save();
-    toast('Записал');
+    toast(c.reconFor ? 'Записал, кошелёк сошёлся' : 'Записал');
   }
 
   if (c.kind === 'receipt') {
@@ -1319,6 +1349,7 @@ function editAccount(id) {
   const a = accountById(id);
   const items = [
     { label: 'Переименовать', icon: '✏️', act: 'rename' },
+    { label: 'Сверить остаток', icon: '🧮', act: 'reconcile', note: `по учёту сейчас ${money(balanceOf(a.id))}` },
     { label: 'Изменить начальный остаток', icon: '💰', act: 'initial', note: money(a.initial || 0) },
     { label: a.savings ? 'Сделать обычным счётом' : 'Сделать сберегательным', icon: '🐖', act: 'savings',
       note: a.savings ? 'сейчас не входит в общий счёт' : 'сейчас входит в общий счёт' },
@@ -1332,6 +1363,9 @@ function editAccount(id) {
     } else if (it.act === 'initial') {
       const v = prompt('Начальный остаток, ₽', String(a.initial || 0));
       if (v !== null && !isNaN(parseFloat(v))) a.initial = parseFloat(v.replace(',', '.'));
+    } else if (it.act === 'reconcile') {
+      reconcileAccount(a);
+      return;
     } else if (it.act === 'savings') {
       a.savings = !a.savings;
       toast(a.savings ? `«${a.name}» больше не входит в общий счёт` : `«${a.name}» снова в общем счёте`);
@@ -1345,6 +1379,45 @@ function editAccount(id) {
     }
     Store.save();
     render();
+  });
+}
+
+/* Сверка: спрашиваем, сколько денег в кошельке на самом деле. */
+function reconcileAccount(a) {
+  const calc = balanceOf(a.id);
+  const v = prompt(`Сколько сейчас в кошельке «${a.name}» на самом деле?\n\nПо учёту получается ${money(calc)}.`, String(Math.round(calc)));
+  if (v === null) return;
+  const fact = parseFloat(String(v).replace(/\s/g, '').replace(',', '.'));
+  if (isNaN(fact)) return toast('Нужна сумма');
+
+  a.fact = { amount: fact, calc: Math.round(calc), diff: Math.round(fact - calc), date: todayISO() };
+  Store.save();
+  render();
+
+  if (!a.fact.diff) return toast('Всё сходится');
+  fixDiscrepancy(a);
+}
+
+/* Предлагаем внести недостающую операцию — доход или расход, смотря чего не хватает. */
+function fixDiscrepancy(a) {
+  const diff = discrepancy(a);
+  if (!diff) return toast(`По кошельку «${a.name}» всё сходится`);
+  const income = diff > 0;
+  openConfirm({
+    kind: 'single',
+    reconFor: a.id,
+    title: income ? 'Не хватает дохода' : 'Не хватает расхода',
+    source: `В кошельке «${a.name}» ${income ? 'больше' : 'меньше'} денег, чем показывает учёт, на ${money(Math.abs(diff))}. ${income ? 'Видимо, не внесён доход' : 'Видимо, не внесён расход'} — проверьте категорию и сохраните.`,
+    draft: {
+      type: income ? 'income' : 'expense',
+      amount: Math.abs(diff),
+      category: income ? 'Другое' : 'Разное',
+      subcategory: income ? '' : 'Другое',
+      date: a.fact.date,
+      note: `Сверка кошелька «${a.name}»`,
+      accountId: a.id,
+      toAccountId: accounts().find((x) => x.id !== a.id)?.id,
+    },
   });
 }
 
@@ -1467,6 +1540,13 @@ document.addEventListener('click', (e) => {
   }
   const goal = e.target.closest('[data-goal]');
   if (goal) return openGoal(goal.dataset.goal);
+
+  const gap = e.target.closest('[data-gap]');
+  if (gap) {
+    const a = accountById(gap.dataset.gap);
+    if (a) fixDiscrepancy(a);
+    return;
+  }
 
   const recPay = e.target.closest('[data-recpay]');
   if (recPay) return payRecurring(recPay.dataset.recpay);

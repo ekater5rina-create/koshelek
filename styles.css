@@ -73,6 +73,11 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .hdr-savings[hidden] { display: none; }
 .acc-card.is-savings { border: 1px dashed var(--line); }
 .acc-tag { font-size: 10.5px; color: var(--muted); margin-top: 3px; text-transform: uppercase; letter-spacing: .04em; }
+.acc-tag.gap { color: var(--red); }
+.acc-card.has-gap { box-shadow: var(--shadow), inset 0 0 0 1.5px var(--red); }
+.adv-act { width: 100%; text-align: left; }
+.adv-act:active { background: var(--card-2); }
+.adv-go { color: var(--accent); font-size: 13px; font-weight: 600; margin-top: 4px; }
 .month-nav { display: flex; align-items: center; justify-content: space-between; }
 .month-name { font-size: 18px; font-weight: 650; }
 .chev { width: 2.2rem; height: 2.2rem; font-size: 22px; color: var(--accent); border-radius: 50%; }
