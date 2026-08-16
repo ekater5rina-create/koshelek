@@ -30,6 +30,12 @@ const _frameCanvas = document.createElement('canvas');
 const _frameCtx = _frameCanvas.getContext('2d', { willReadFrequently: true });
 
 function scanFrame(source, sw, sh, maxSide = 900) {
+  return scanRect(source, 0, 0, sw, sh, maxSide);
+}
+
+/* Кусок кадра в исходном разрешении: центральный вырез даёт QR вдвое крупнее,
+   чем то же изображение, ужатое целиком. */
+function scanRect(source, sx, sy, sw, sh, maxSide = 900, fast = false) {
   if (!sw || !sh) return null;
   const k = Math.min(1, maxSide / Math.max(sw, sh));
   const w = Math.max(1, Math.round(sw * k));
@@ -37,13 +43,15 @@ function scanFrame(source, sw, sh, maxSide = 900) {
   _frameCanvas.width = w;
   _frameCanvas.height = h;
   try {
-    _frameCtx.drawImage(source, 0, 0, w, h);
+    _frameCtx.drawImage(source, sx, sy, sw, sh, 0, 0, w, h);
   } catch (e) {
     return null;
   }
   const data = _frameCtx.getImageData(0, 0, w, h);
-  let res = jsQR(data.data, w, h, { inversionAttempts: 'attemptBoth' });
-  if (!res) {
+  // В живом потоке важна скорость: код на чеке всегда тёмный на светлом,
+  // поэтому не проверяем инверсию и не тянем контраст — это делает «Снимок».
+  let res = jsQR(data.data, w, h, { inversionAttempts: fast ? 'dontInvert' : 'attemptBoth' });
+  if (!res && !fast) {
     const b = boost(data);
     if (b) res = jsQR(b.data, w, h, { inversionAttempts: 'attemptBoth' });
   }
@@ -269,13 +277,20 @@ const LiveScan = {
   timer: null,
   running: false,
 
-  async start(video, onFound, onFail) {
+  frames: 0,
+  found: 0,
+  status: '',
+
+  async start(video, onFound, onFail, onStatus) {
+    this.frames = 0;
+    this.onStatus = onStatus || (() => {});
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       return onFail('Камера в этом браузере недоступна');
     }
     try {
+      // Просим максимум разрешения: мелкий QR читается только на детальном кадре.
       this.stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
         audio: false,
       });
     } catch (e) {
@@ -294,22 +309,55 @@ const LiveScan = {
     // Если за минуту ничего не нашлось — закрываем сами, чтобы камера не жгла батарею.
     this.timer = setTimeout(() => { if (this.running) { this.stop(video); onFail('Не нашёл QR-код за минуту'); } }, 60000);
 
+    const started = Date.now();
     const tick = () => {
       if (!this.running) return;
-      const raw = scanFrame(video, video.videoWidth, video.videoHeight);
-      if (raw) {
-        this.stop(video);
-        return onFound(raw);
+      const vw = video.videoWidth, vh = video.videoHeight;
+      if (vw && vh) {
+        this.gotFrames = true;
+        this.frames++;
+        // Чередуем: центральный вырез в исходном разрешении и весь кадр целиком.
+        let raw;
+        const t0 = Date.now();
+        if (this.frames % 2) {
+          const side = Math.round(Math.min(vw, vh) * 0.7);
+          raw = scanRect(video, Math.round((vw - side) / 2), Math.round((vh - side) / 2), side, side, 640, true);
+        } else {
+          raw = scanRect(video, 0, 0, vw, vh, 640, true);
+        }
+        this.ms = Date.now() - t0;
+        if (this.frames % 8 === 0) this.onStatus(`Ищу код · кадров ${this.frames} · ${vw}×${vh} · ${this.ms} мс/кадр`);
+        if (raw) {
+          this.stop(video);
+          return onFound(raw);
+        }
+      } else {
+        this.onStatus(Date.now() - started > 3000
+          ? 'Камера включилась, но кадры не приходят. Нажмите «Вставить код».'
+          : 'Камера запускается…');
       }
-      this.raf = requestAnimationFrame(tick);
+      // Обычный таймер, а не requestAnimationFrame: тот замирает в фоне
+      // и в режиме энергосбережения, и сканирование молча останавливается.
+      this.raf = setTimeout(tick, 30);
     };
-    this.raf = requestAnimationFrame(tick);
+    tick();
+  },
+
+  /* Разбор текущего кадра «в полную силу» — по кнопке, если поток не справляется. */
+  async shot(video) {
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if (!vw || !vh) return { ok: false, report: 'Камера ещё не отдала кадр' };
+    const c = document.createElement('canvas');
+    c.width = vw; c.height = vh;
+    c.getContext('2d').drawImage(video, 0, 0);
+    const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.95));
+    return scanReceiptImage(new File([blob], 'frame.jpg', { type: 'image/jpeg' }));
   },
 
   stop(video) {
     this.running = false;
     clearTimeout(this.timer);
-    if (this.raf) cancelAnimationFrame(this.raf);
+    clearTimeout(this.raf);
     this.raf = null;
     if (this.stream) {
       for (const t of this.stream.getTracks()) { try { t.stop(); } catch (e) {} }

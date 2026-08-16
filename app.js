@@ -4,7 +4,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 /* Версию видно в «Ещё» — так сразу понятно, доехало ли обновление до телефона. */
-const APP_VERSION = '13 · сканер камерой';
+const APP_VERSION = '14 · сканер с диагностикой';
 
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const MONTHS_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
@@ -1111,27 +1111,51 @@ function openReceiptMenu() {
 }
 
 /* Сканирование живой камерой. */
+function closeScan() {
+  LiveScan.stop($('#scanVideo'));
+  $('#scanOverlay').hidden = true;
+}
+
 function startLiveScan() {
   const video = $('#scanVideo');
+  $('#scanHint').textContent = 'Наведите камеру на QR-код чека';
   $('#scanOverlay').hidden = false;
   LiveScan.start(
     video,
-    (raw) => {
-      $('#scanOverlay').hidden = true;
-      handleQrPayload(raw);
-    },
-    (why) => {
-      $('#scanOverlay').hidden = true;
-      alert(why + '\n\nМожно ввести код из QR вручную или вставить текст чека.');
-    }
+    (raw) => { closeScan(); handleQrPayload(raw); },
+    (why) => { closeScan(); alert(why + '\n\nМожно ввести код из QR вручную или вставить текст чека.'); },
+    (status) => { $('#scanHint').textContent = status; }
   );
 }
 
-/* Ручной ввод содержимого QR: айфон умеет читать его штатной «Камерой»,
-   оттуда строку можно скопировать. */
-function pasteQrCode() {
-  const v = prompt('Вставьте строку из QR-кода чека.\nОна выглядит так:\nt=20260814T1932&s=1876.43&fn=…&i=…&fp=…');
+/* Разбор текущего кадра «в полную силу», если поток не справляется. */
+async function shotFromScanner() {
+  $('#scanHint').textContent = 'Разбираю кадр…';
+  const res = await LiveScan.shot($('#scanVideo'));
+  if (res && res.ok) { closeScan(); return handleQrPayload(res.raw); }
+  $('#scanHint').textContent = 'В этом кадре кода нет. Поднесите ближе и держите ровно.';
+  if (res && res.report) console.log('Снимок:', res.report);
+}
+
+/* Ручной ввод содержимого QR: айфон читает такие коды штатной «Камерой»,
+   оттуда строку можно скопировать. Сначала пробуем взять её из буфера сами. */
+async function pasteQrCode() {
+  let text = '';
+  try {
+    if (navigator.clipboard && navigator.clipboard.readText) text = await navigator.clipboard.readText();
+  } catch (e) { /* пользователь не разрешил — спросим вручную */ }
+
+  if (text && parseReceiptQR(text.trim())) {
+    closeScan();
+    return handleQrPayload(text.trim());
+  }
+  const v = prompt(
+    'Вставьте строку из QR-кода чека.\n\nКак её получить: наведите на код обычную «Камеру» айфона, ' +
+    'нажмите на подсказку и скопируйте текст.\n\nВыглядит так:\nt=20260814T1932&s=1876.43&fn=…&i=…&fp=…',
+    text || ''
+  );
   if (!v) return;
+  closeScan();
   handleQrPayload(v.trim());
 }
 
@@ -1701,7 +1725,9 @@ $('#addAccount').onclick = addAccount;
 $('#loadHistory').onclick = loadHistoryFromSheet;
 $('#addGoal').onclick = addGoal;
 $('#camHome').onclick = openReceiptMenu;
-$('#scanClose').onclick = () => { LiveScan.stop($('#scanVideo')); $('#scanOverlay').hidden = true; };
+$('#scanClose').onclick = closeScan;
+$('#scanShot').onclick = shotFromScanner;
+$('#scanPaste').onclick = pasteQrCode;
 $('#checkUpdate').onclick = async () => {
   toast('Проверяю…');
   try {

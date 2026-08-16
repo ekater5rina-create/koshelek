@@ -275,8 +275,12 @@
 <div class="scan" id="scanOverlay" hidden>
   <video id="scanVideo" playsinline muted></video>
   <div class="scan-box"></div>
-  <div class="scan-hint">Наведите камеру на QR-код чека</div>
-  <button class="scan-close" id="scanClose">Закрыть</button>
+  <div class="scan-hint" id="scanHint">Наведите камеру на QR-код чека</div>
+  <div class="scan-bar">
+    <button class="scan-btn" id="scanShot">Снимок</button>
+    <button class="scan-btn ghost" id="scanPaste">Вставить код</button>
+    <button class="scan-btn ghost" id="scanClose">Закрыть</button>
+  </div>
 </div>
 
 <!-- КАРТОЧКА ОПЕРАЦИИ -->
