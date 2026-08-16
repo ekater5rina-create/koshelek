@@ -198,7 +198,11 @@ const Advice = {
   },
 };
 
-/* Накоплено по цели — сумма операций, привязанных к ней. */
+/* Накоплено по цели — сумма операций, привязанных к ней.
+   Пополнение может быть переводом на сберегательный счёт или расходом
+   в категорию «Сбережения»; снятие обратно приходит доходом и вычитается. */
 const goalSaved = (goal) =>
   (goal.initial || 0) +
-  Store.state.transactions.filter((t) => t.goalId === goal.id).reduce((s, t) => s + (t.type === 'expense' ? t.amount : -t.amount), 0);
+  Store.state.transactions
+    .filter((t) => t.goalId === goal.id)
+    .reduce((s, t) => s + (t.type === 'income' ? -t.amount : t.amount), 0);

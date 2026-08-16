@@ -43,7 +43,12 @@ function balanceOf(accId) {
   }
   return sum;
 }
-const totalBalance = () => accounts().reduce((s, a) => s + balanceOf(a.id), 0);
+/* Общий счёт — только повседневные деньги. Сбережения считаются отдельно,
+   как «Баланс расходов» и «Баланс сбережений» в таблице. */
+const spendAccounts = () => accounts().filter((a) => !a.savings);
+const savingAccounts = () => accounts().filter((a) => a.savings);
+const totalBalance = () => spendAccounts().reduce((s, a) => s + balanceOf(a.id), 0);
+const savingsBalance = () => savingAccounts().reduce((s, a) => s + balanceOf(a.id), 0);
 
 const txOfMonth = (key) =>
   Store.state.transactions
@@ -202,13 +207,9 @@ function topUpFund(f) {
   if (v === null) return;
   const amount = parseFloat(String(v).replace(/\s/g, '').replace(',', '.'));
   if (!amount || amount <= 0) return toast('Нужна сумма больше нуля');
-  const accs = accounts().map((a) => ({ label: a.name, icon: a.icon, note: money(balanceOf(a.id)), id: a.id }));
+  const accs = spendAccounts().map((a) => ({ label: a.name, icon: a.icon, note: money(balanceOf(a.id)), id: a.id }));
   openPicker('С какого счёта отложить', accs, (it) => {
-    Store.state.transactions.push({
-      id: uid('tx'), type: 'expense', amount, accountId: it.id, toAccountId: null,
-      category: 'Сбережения', subcategory: 'На непредвиденные расходы',
-      date: todayISO(), note: FUND_TAG, fund: true, createdAt: Date.now(),
-    });
+    Store.state.transactions.push(saveToSavings(amount, it.id, FUND_TAG, { fund: true }));
     Store.save();
     render();
     toast(`Отложено ${money(amount)} в фонд`);
@@ -430,18 +431,26 @@ function topUpGoal(g) {
   const amount = parseFloat(String(v).replace(/\s/g, '').replace(',', '.'));
   if (!amount || amount <= 0) return toast('Нужна сумма больше нуля');
 
-  const accs = accounts().map((a) => ({ label: a.name, icon: a.icon, note: money(balanceOf(a.id)), id: a.id }));
+  const accs = spendAccounts().map((a) => ({ label: a.name, icon: a.icon, note: money(balanceOf(a.id)), id: a.id }));
   openPicker('С какого счёта отложить', accs, (it) => {
-    Store.state.transactions.push({
-      id: uid('tx'), type: 'expense', amount, accountId: it.id, toAccountId: null,
-      category: 'Сбережения', subcategory: 'На сберегательные счета',
-      date: todayISO(), note: `Цель: ${g.name}`, goalId: g.id, createdAt: Date.now(),
-    });
+    Store.state.transactions.push(saveToSavings(amount, it.id, `Цель: ${g.name}`, { goalId: g.id }));
     Store.save();
     $('#goalSheet').hidden = true;
     render();
     toast(`Отложено ${money(amount)} на «${g.name}»`);
   });
+}
+
+/* Отложить деньги: если есть сберегательный счёт — это перевод на него,
+   иначе просто расход в категорию «Сбережения». */
+function saveToSavings(amount, fromId, note, extra) {
+  const target = savingAccounts().find((a) => a.id !== fromId);
+  const base = {
+    id: uid('tx'), amount, accountId: fromId, date: todayISO(), note,
+    createdAt: Date.now(), ...extra,
+  };
+  if (target) return { ...base, type: 'transfer', toAccountId: target.id, category: '', subcategory: '' };
+  return { ...base, type: 'expense', toAccountId: null, category: 'Сбережения', subcategory: 'На сберегательные счета' };
 }
 
 function editGoal(g) {
@@ -500,11 +509,16 @@ function renderHome() {
   $('#homeMonthSummary').textContent =
     `${MONTHS[new Date().getMonth()]}: доходы ${money(t.income)} · расходы ${money(t.expense)}`;
 
-  $('#accountsRow').innerHTML = accounts()
+  const sav = savingsBalance();
+  $('#savingsLine').hidden = !savingAccounts().length;
+  $('#savingsLine').innerHTML = `🐖 Сбережения <b>${money(sav)}</b> — отдельно от общего счёта`;
+
+  $('#accountsRow').innerHTML = spendAccounts().concat(savingAccounts())
     .map(
-      (a) => `<button class="acc-card" data-acc="${a.id}">
+      (a) => `<button class="acc-card ${a.savings ? 'is-savings' : ''}" data-acc="${a.id}">
         <div class="acc-name"><span>${a.icon}</span><span>${esc(a.name)}</span></div>
         <div class="acc-sum">${money(balanceOf(a.id))}</div>
+        ${a.savings ? '<div class="acc-tag">сбережения</div>' : ''}
       </button>`
     )
     .join('') || '<div class="empty">Нет счетов</div>';
@@ -657,7 +671,7 @@ function renderMore() {
     .map(
       (a) => `<button class="row" data-editacc="${a.id}">
       <span class="row-ic">${a.icon}</span>
-      <span>${esc(a.name)}${a.archived ? ' (в архиве)' : ''}</span>
+      <span>${esc(a.name)}${a.archived ? ' (в архиве)' : ''}${a.savings ? '<span class="row-sub">сбережения — вне общего счёта</span>' : ''}</span>
       <span class="row-val">${money(balanceOf(a.id))}</span></button>`
     )
     .join('');
@@ -1284,6 +1298,8 @@ function editAccount(id) {
   const items = [
     { label: 'Переименовать', icon: '✏️', act: 'rename' },
     { label: 'Изменить начальный остаток', icon: '💰', act: 'initial', note: money(a.initial || 0) },
+    { label: a.savings ? 'Сделать обычным счётом' : 'Сделать сберегательным', icon: '🐖', act: 'savings',
+      note: a.savings ? 'сейчас не входит в общий счёт' : 'сейчас входит в общий счёт' },
     { label: a.archived ? 'Вернуть из архива' : 'В архив', icon: '📥', act: 'archive' },
     { label: 'Удалить счёт', icon: '🗑️', act: 'delete' },
   ];
@@ -1294,6 +1310,9 @@ function editAccount(id) {
     } else if (it.act === 'initial') {
       const v = prompt('Начальный остаток, ₽', String(a.initial || 0));
       if (v !== null && !isNaN(parseFloat(v))) a.initial = parseFloat(v.replace(',', '.'));
+    } else if (it.act === 'savings') {
+      a.savings = !a.savings;
+      toast(a.savings ? `«${a.name}» больше не входит в общий счёт` : `«${a.name}» снова в общем счёте`);
     } else if (it.act === 'archive') {
       a.archived = !a.archived;
     } else if (it.act === 'delete') {

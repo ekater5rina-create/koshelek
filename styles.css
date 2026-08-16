@@ -68,6 +68,11 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .hdr-sub { font-size: 13px; color: var(--muted); }
 .hdr-total { font-size: 34px; font-weight: 700; letter-spacing: -.02em; margin-top: 2px; }
 .hdr-month { font-size: 13px; color: var(--muted); margin-top: 4px; }
+.hdr-savings { font-size: 13.5px; color: var(--muted); margin-top: 4px; }
+.hdr-savings b { color: var(--text); font-weight: 650; }
+.hdr-savings[hidden] { display: none; }
+.acc-card.is-savings { border: 1px dashed var(--line); }
+.acc-tag { font-size: 10.5px; color: var(--muted); margin-top: 3px; text-transform: uppercase; letter-spacing: .04em; }
 .month-nav { display: flex; align-items: center; justify-content: space-between; }
 .month-name { font-size: 18px; font-weight: 650; }
 .chev { width: 2.2rem; height: 2.2rem; font-size: 22px; color: var(--accent); border-radius: 50%; }

@@ -35,7 +35,8 @@ const INCOME_CATEGORIES = [
 const DEFAULT_ACCOUNTS = [
   { id: 'acc_cash', name: 'Наличные', icon: '💵', color: '#4fb06a', initial: 0, archived: false },
   { id: 'acc_card', name: 'Карта', icon: '💳', color: '#4a9df2', initial: 0, archived: false },
-  { id: 'acc_savings', name: 'Сбережения', icon: '🐖', color: '#f2c14a', initial: 0, archived: false },
+  // savings: деньги отложены и в общий счёт не входят.
+  { id: 'acc_savings', name: 'Сбережения', icon: '🐖', color: '#f2c14a', initial: 0, archived: false, savings: true },
 ];
 
 const STORE_KEY = 'koshelek.v1';
@@ -60,6 +61,10 @@ const Store = {
         const parsed = JSON.parse(raw);
         this.state = { ...emptyState(), ...parsed };
         this.state.settings = { ...emptyState().settings, ...(parsed.settings || {}) };
+        // Копии, сделанные до разделения балансов, помечаем по названию счёта.
+        for (const a of this.state.accounts) {
+          if (a.savings === undefined) a.savings = /сбереж|накопл|копилк/i.test(a.name);
+        }
       }
     } catch (e) {
       console.warn('Не удалось прочитать сохранённые данные, начинаем с чистого листа', e);

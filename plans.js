@@ -97,7 +97,7 @@ const FUND_TAG = 'Фонд нерегулярных трат';
 const fundSaved = () =>
   Store.state.transactions
     .filter((t) => t.fund)
-    .reduce((s, t) => s + (t.type === 'expense' ? t.amount : -t.amount), 0);
+    .reduce((s, t) => s + (t.type === 'income' ? -t.amount : t.amount), 0);
 
 /* ---------- Резервные копии ---------- */
 const Backup = {
