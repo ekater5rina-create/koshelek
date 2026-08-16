@@ -193,47 +193,113 @@ function parsePhrase(text, accountsList) {
 
 const localISO = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 
-/* ---------- Голосовой ввод ---------- */
+/* ---------- Голосовой ввод ----------
+   На айфоне у распознавания речи Safari есть особенность: в приложении,
+   запущенном с домашнего экрана, оно «стартует» и молчит навсегда — ни результата,
+   ни ошибки. Поэтому там сразу отправляем к диктовке с клавиатуры, а везде ещё
+   держим сторожевой таймер, чтобы кнопка не горела вечно. */
+const IS_IOS = /iP(hone|ad|od)/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const IS_STANDALONE = window.navigator.standalone === true ||
+  (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+
 const Voice = {
   rec: null,
   active: false,
+  timer: null,
+  placeholder: '',
+
   supported() {
+    if (IS_IOS && IS_STANDALONE) return false;
     return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
   },
+
+  /* Диктовка с клавиатуры: ставим курсор в поле, дальше человек жмёт 🎤 на клавиатуре. */
+  useKeyboard(input, why) {
+    this.reset(input);
+    input.focus();
+    try { input.setSelectionRange(input.value.length, input.value.length); } catch (e) {}
+    toast(why || 'Нажмите 🎤 на клавиатуре и продиктуйте');
+  },
+
   start(input, onDone) {
-    if (this.active) return this.stop();
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) {
-      toast('Голосовой ввод здесь недоступен — нажмите 🎤 на клавиатуре айфона');
-      input.focus();
-      return;
+    if (this.active) return this.stop(input);
+
+    if (!this.supported()) {
+      return this.useKeyboard(input, IS_IOS
+        ? 'На айфоне диктуйте кнопкой 🎤 на клавиатуре'
+        : 'Здесь нет распознавания речи — наберите текстом');
     }
+
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     const rec = new SR();
     rec.lang = 'ru-RU';
     rec.interimResults = true;
     rec.continuous = false;
+
+    let heard = false;
     rec.onresult = (e) => {
+      heard = true;
+      this.arm(input);
       let text = '';
       for (const r of e.results) text += r[0].transcript;
       input.value = text;
-      if (e.results[e.results.length - 1].isFinal) onDone(text);
+      if (e.results[e.results.length - 1].isFinal) {
+        this.reset(input);
+        onDone(text);
+      }
     };
     rec.onerror = (e) => {
-      this.active = false;
-      document.body.classList.remove('listening');
-      toast(e.error === 'not-allowed' ? 'Нет доступа к микрофону' : 'Не расслышал, попробуйте ещё раз');
+      this.reset(input);
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        this.useKeyboard(input, 'Нет доступа к микрофону — продиктуйте с клавиатуры');
+      } else if (e.error !== 'aborted') {
+        toast('Не расслышал, попробуйте ещё раз');
+      }
     };
-    rec.onend = () => { this.active = false; document.body.classList.remove('listening'); };
+    rec.onend = () => {
+      const wasActive = this.active;
+      this.reset(input);
+      if (wasActive && !heard) this.useKeyboard(input, 'Ничего не расслышал — продиктуйте с клавиатуры');
+    };
+
     this.rec = rec;
     this.active = true;
+    this.placeholder = input.placeholder;
     document.body.classList.add('listening');
     input.value = '';
     input.placeholder = 'Говорите…';
-    rec.start();
+
+    try {
+      rec.start();
+    } catch (err) {
+      // Например, распознавание уже запущено — состояние обязательно снимаем.
+      this.reset(input);
+      return this.useKeyboard(input, 'Голосовой ввод не запустился — продиктуйте с клавиатуры');
+    }
+    this.arm(input);
   },
-  stop() {
-    try { this.rec && this.rec.stop(); } catch (e) {}
+
+  /* Сторожевой таймер: если за 8 секунд ничего не пришло — выключаем сами. */
+  arm(input) {
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => {
+      if (!this.active) return;
+      this.stop(input);
+      this.useKeyboard(input, 'Микрофон не отвечает — продиктуйте с клавиатуры');
+    }, 8000);
+  },
+
+  stop(input) {
+    try { this.rec && this.rec.abort ? this.rec.abort() : this.rec && this.rec.stop(); } catch (e) {}
+    this.reset(input);
+  },
+
+  reset(input) {
+    clearTimeout(this.timer);
+    this.timer = null;
     this.active = false;
     document.body.classList.remove('listening');
+    if (input && this.placeholder) input.placeholder = this.placeholder;
   },
 };

@@ -1147,11 +1147,8 @@ function wireQuick(inputId, micId, goId) {
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } });
   if (goId) $('#' + goId).onclick = submit;
   $('#' + micId).onclick = () => {
-    if (Voice.active) return Voice.stop();
-    Voice.start(input, (text) => {
-      input.placeholder = inputId === 'quickHome' ? 'Скажите или напишите: кофе 250' : 'Скажите или напишите: такси 300 вчера';
-      quickAdd(text, input);
-    });
+    if (Voice.active) return Voice.stop(input);
+    Voice.start(input, (text) => quickAdd(text, input));
   };
 }
 wireQuick('quickHome', 'micHome', 'quickHomeGo');
