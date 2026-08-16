@@ -1091,17 +1091,59 @@ function wireQuick(inputId, micId, goId) {
 wireQuick('quickHome', 'micHome', 'quickHomeGo');
 wireQuick('quickSheet', 'micSheet', null);
 
-/* ---------- Импорт файла «Планировщик бюджета» ---------- */
-function importPlannerFile(file) {
+/* ---------- Импорт: тип файла определяется по содержимому ----------
+   Так неважно, какую кнопку нажали и что подставил файловый выбор на телефоне. */
+function importAnyFile(file) {
   const r = new FileReader();
+  r.onerror = () => alert(`Не удалось прочитать файл «${file.name}». Попробуйте сначала сохранить его в «Файлы» на телефоне, а потом выбрать оттуда.`);
   r.onload = () => {
+    const text = String(r.result || '').replace(/^﻿/, '').trim();
+    const info = `Файл: ${file.name}\nРазмер: ${Math.round(file.size / 1024)} КБ`;
+
+    if (!text) return alert(`Файл пустой.\n\n${info}`);
+
+    // Резервная копия или список операций
+    if (text[0] === '{' || text[0] === '[') {
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        return alert(`Файл начинается как JSON, но разобрать его не вышло.\n\n${info}\nОшибка: ${e.message}\nНачало файла: ${text.slice(0, 80)}`);
+      }
+      const state = Array.isArray(data) ? { transactions: data } : (data.state && data.state.transactions ? data.state : data);
+      if (!Array.isArray(state.transactions)) {
+        return alert(`В файле нет списка операций — похоже, это не копия Кошелька.\n\n${info}\nПоля в файле: ${Object.keys(data).slice(0, 10).join(', ') || 'нет'}`);
+      }
+      if (!confirm(`Заменить текущие данные содержимым копии?\n\nВ файле ${state.transactions.length} операций.`)) return;
+      Store.replaceAll(state);
+      render();
+      return toast(`Восстановлено ${state.transactions.length} операций`);
+    }
+
+    // Таблица: планировщик или простой список операций
+    let rows;
+    try {
+      rows = parseCsv(text);
+    } catch (e) {
+      return alert(`Не смог разобрать таблицу.\n\n${info}\nОшибка: ${e.message}`);
+    }
+    if (rows.some((row) => isMonthHeader(row))) return importPlannerText(file.name, text);
+    if (rows.length < 2) return alert(`В файле нет строк с данными.\n\n${info}\nНачало файла: ${text.slice(0, 80)}`);
+    importCsv(text);
+  };
+  r.readAsText(file, 'utf-8');
+}
+
+/* ---------- Импорт файла «Планировщик бюджета» ---------- */
+function importPlannerText(fileName, text) {
+  {
     let parsed;
-    const guess = (file.name.match(/20\d{2}/) || [])[0] || String(new Date().getFullYear());
-    const year = prompt(`За какой год этот файл?\nФайл: ${file.name}`, guess);
+    const guess = (fileName.match(/20\d{2}/) || [])[0] || String(new Date().getFullYear());
+    const year = prompt(`За какой год этот файл?\nФайл: ${fileName}`, guess);
     if (!year || !/^20\d{2}$/.test(year.trim())) return toast('Нужен год в формате 2026');
 
     try {
-      parsed = parsePlannerCsv(r.result, year.trim());
+      parsed = parsePlannerCsv(text, year.trim());
     } catch (e) {
       return toast('Не смог разобрать файл: ' + e.message);
     }
@@ -1141,8 +1183,7 @@ function importPlannerFile(file) {
       `Расходы за год: ${money(check.expenseTotal)}\n\n` +
       `Сверьте эти суммы со строками «Итого» в таблице.`
     ), 300);
-  };
-  r.readAsText(file, 'utf-8');
+  }
 }
 
 /* ---------- Перенос истории из таблицы ---------- */
@@ -1365,9 +1406,9 @@ function download(name, content, mime) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-let pendingImport = null;
-function askFile(kind) {
-  pendingImport = kind;
+/* Тип файла определяется по содержимому в importAnyFile, поэтому все три
+   пункта меню открывают один и тот же выбор файла. */
+function askFile() {
   $('#filePicker').value = '';
   $('#filePicker').click();
 }
@@ -1543,23 +1584,7 @@ $('#wipe').onclick = () => {
 $('#filePicker').onchange = (e) => {
   const f = e.target.files[0];
   if (!f) return;
-  if (pendingImport === 'planner') { importPlannerFile(f); return; }
-  const r = new FileReader();
-  r.onload = () => {
-    try {
-      if (pendingImport === 'json') {
-        const data = JSON.parse(r.result);
-        if (!data.transactions) throw new Error('Это не резервная копия Кошелька');
-        if (!confirm('Заменить текущие данные содержимым копии?')) return;
-        Store.replaceAll(data);
-        render();
-        toast('Копия восстановлена');
-      } else importCsv(r.result);
-    } catch (err) {
-      alert('Не удалось прочитать файл: ' + err.message);
-    }
-  };
-  r.readAsText(f, 'utf-8');
+  importAnyFile(f);
 };
 $('#themeSeg').onclick = (e) => {
   const b = e.target.closest('[data-theme]');

@@ -314,7 +314,8 @@
   </div>
 </div>
 
-<input type="file" id="filePicker" accept=".csv,.json,text/csv,application/json" hidden>
+<!-- Без accept: на айфоне фильтр по типу прячет файлы из облачных папок. -->
+<input type="file" id="filePicker" hidden>
 <input type="file" id="receiptCamera" accept="image/*" capture="environment" hidden>
 <input type="file" id="receiptGallery" accept="image/*" hidden>
 <div id="toast" class="toast" hidden></div>
