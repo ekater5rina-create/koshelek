@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0e1116" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f5f6f8" media="(prefers-color-scheme: light)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Кошелёк">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="styles.css">
+<title>Кошелёк</title>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ГЛАВНАЯ -->
+  <section class="screen" data-screen="home">
+    <header class="hdr">
+      <div class="hdr-sub">Всего на счетах</div>
+      <div class="hdr-total" id="totalBalance">0 ₽</div>
+      <div class="hdr-month" id="homeMonthSummary"></div>
+    </header>
+    <div class="scroll">
+      <div class="quick">
+        <button class="mic" id="micHome" aria-label="Сказать голосом">🎤</button>
+        <input id="quickHome" class="quick-in" placeholder="Скажите или напишите: кофе 250" autocomplete="off" enterkeyhint="done">
+        <button class="mic cam" id="camHome" aria-label="Сканировать чек">📷</button>
+        <button class="quick-go" id="quickHomeGo">Добавить</button>
+      </div>
+      <div class="accounts-row" id="accountsRow"></div>
+
+      <div class="card" id="monthCard">
+        <div class="card-head">
+          <span>Этот месяц</span>
+          <button class="link" data-goto="report">Отчёт</button>
+        </div>
+        <div class="kpis" id="monthKpis"></div>
+        <div class="bars" id="monthBars"></div>
+      </div>
+
+      <div class="card" id="homeGoalsCard">
+        <div class="card-head">
+          <span>Цели</span>
+          <button class="link" data-goto="goals">Все</button>
+        </div>
+        <div id="homeGoals"></div>
+      </div>
+
+      <div class="card" id="homeAdviceCard">
+        <div class="card-head"><span>Подсказки</span></div>
+        <div id="homeAdvice" class="advice-list"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <span>Последние операции</span>
+          <button class="link" data-goto="ops">Все</button>
+        </div>
+        <div id="recentList" class="tx-list"></div>
+      </div>
+      <div class="pad"></div>
+    </div>
+  </section>
+
+  <!-- ОПЕРАЦИИ -->
+  <section class="screen" data-screen="ops" hidden>
+    <header class="hdr small">
+      <div class="month-nav">
+        <button class="chev" id="opsPrev" aria-label="Предыдущий месяц">‹</button>
+        <div class="month-name" id="opsMonthName"></div>
+        <button class="chev" id="opsNext" aria-label="Следующий месяц">›</button>
+      </div>
+      <div class="hdr-month" id="opsSummary"></div>
+      <input id="opsSearch" class="search" type="search" placeholder="Поиск по категории и комментарию" autocomplete="off">
+    </header>
+    <div class="scroll" id="opsList"></div>
+  </section>
+
+  <!-- ОТЧЁТ -->
+  <section class="screen" data-screen="report" hidden>
+    <header class="hdr small">
+      <div class="month-nav">
+        <button class="chev" id="repPrev" aria-label="Предыдущий месяц">‹</button>
+        <div class="month-name" id="repMonthName"></div>
+        <button class="chev" id="repNext" aria-label="Следующий месяц">›</button>
+      </div>
+      <div class="seg" id="repSeg">
+        <button class="seg-btn active" data-kind="expense">Расходы</button>
+        <button class="seg-btn" data-kind="income">Доходы</button>
+      </div>
+    </header>
+    <div class="scroll">
+      <div class="donut-wrap">
+        <svg id="donut" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="Диаграмма по категориям"></svg>
+        <div class="donut-center">
+          <div class="donut-sum" id="donutSum">0 ₽</div>
+          <div class="donut-cap" id="donutCap">за месяц</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><span>По категориям</span><button class="link" data-goto="budgets">Лимиты</button></div>
+        <div id="repList" class="cat-list"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><span>Год по месяцам</span></div>
+        <div id="yearChart" class="year-chart"></div>
+      </div>
+      <div class="pad"></div>
+    </div>
+  </section>
+
+  <!-- ЕЩЁ -->
+  <section class="screen" data-screen="more" hidden>
+    <header class="hdr small"><div class="month-name">Ещё</div></header>
+    <div class="scroll">
+      <div class="card">
+        <div class="card-head"><span>Счета</span><button class="link" id="addAccount">Добавить</button></div>
+        <div id="accountsList" class="rows"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><span>Планы</span></div>
+        <div class="rows">
+          <button class="row" data-goto="goals"><span class="row-ic">🏁</span><span>Цели накоплений</span><span class="row-go">›</span></button>
+          <button class="row" data-goto="recurring"><span class="row-ic">🔁</span><span>Регулярные платежи</span><span class="row-val" id="recBadge"></span><span class="row-go">›</span></button>
+          <button class="row" data-goto="fund"><span class="row-ic">🌊</span><span>Фонд нерегулярных трат</span><span class="row-val" id="fundBadge"></span><span class="row-go">›</span></button>
+          <button class="row" data-goto="budgets"><span class="row-ic">🎯</span><span>Лимиты по категориям</span><span class="row-go">›</span></button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><span>Данные</span></div>
+        <div class="rows">
+          <button class="row" id="makeBackup"><span class="row-ic">💾</span><span>Сохранить копию<span class="row-sub" id="backupStatus"></span></span><span class="row-go">›</span></button>
+          <button class="row" id="importJson"><span class="row-ic">♻️</span><span>Восстановить из копии</span><span class="row-go">›</span></button>
+          <button class="row" id="backupRemind"><span class="row-ic">⏰</span><span>Напоминать о копии</span><span class="row-val" id="backupRemindVal"></span><span class="row-go">›</span></button>
+          <button class="row" id="importPlanner"><span class="row-ic">📗</span><span>Импорт файла «Планировщик бюджета»<span class="row-sub">CSV, выгруженный из вашей таблицы</span></span><span class="row-go">›</span></button>
+          <button class="row" id="loadHistory"><span class="row-ic">📊</span><span>Загрузить историю за 2026<span class="row-sub">встроенная копия вашей таблицы</span></span><span class="row-go">›</span></button>
+          <button class="row" id="exportCsv"><span class="row-ic">⬇️</span><span>Экспорт операций в CSV</span><span class="row-go">›</span></button>
+          <button class="row" id="importCsv"><span class="row-ic">⬆️</span><span>Импорт операций из CSV</span><span class="row-go">›</span></button>
+          <button class="row danger" id="wipe"><span class="row-ic">🗑️</span><span>Стереть все данные</span><span class="row-go">›</span></button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><span>Оформление</span></div>
+        <div class="seg wide" id="themeSeg">
+          <button class="seg-btn" data-theme="auto">Как в системе</button>
+          <button class="seg-btn" data-theme="light">Светлая</button>
+          <button class="seg-btn" data-theme="dark">Тёмная</button>
+        </div>
+      </div>
+      <div class="hint">
+        Чтобы приложение появилось на домашнем экране айфона: откройте страницу в Safari → «Поделиться» → «На экран „Домой“».<br><br>
+        Голосовой ввод через кнопку 🎤 работает только на защищённом соединении (https или localhost).
+        Если страница открыта по обычному адресу вида http://192.168…, нажмите на поле ввода и используйте
+        микрофон на клавиатуре айфона — надиктованный текст разберётся точно так же.<br><br>
+        Кнопка 📷 читает QR-код кассового чека с фотографии: оттуда берутся точная сумма и дата.
+        Чтобы разнести чек по категориям построчно, откройте фото чека, выделите на нём текст
+        («Живой текст» на айфоне), скопируйте и выберите «Вставить текст чека».
+      </div>
+      <div class="pad"></div>
+    </div>
+  </section>
+
+  <!-- ЦЕЛИ -->
+  <section class="screen" data-screen="goals" hidden>
+    <header class="hdr small">
+      <div class="month-nav">
+        <button class="chev" data-goto="home" aria-label="Назад">‹</button>
+        <div class="month-name">Цели</div>
+        <button class="chev" id="addGoal" aria-label="Новая цель">+</button>
+      </div>
+      <div class="hdr-month" id="goalsFree"></div>
+    </header>
+    <div class="scroll"><div id="goalsList"></div><div class="pad"></div></div>
+  </section>
+
+  <!-- РЕГУЛЯРНЫЕ ПЛАТЕЖИ -->
+  <section class="screen" data-screen="recurring" hidden>
+    <header class="hdr small">
+      <div class="month-nav">
+        <button class="chev" data-goto="more" aria-label="Назад">‹</button>
+        <div class="month-name">Регулярные платежи</div>
+        <span style="width:2.2rem"></span>
+      </div>
+      <div class="hdr-month" id="recSummary"></div>
+    </header>
+    <div class="scroll"><div id="recBody"></div><div class="pad"></div></div>
+  </section>
+
+  <!-- ФОНД НЕРЕГУЛЯРНЫХ ТРАТ -->
+  <section class="screen" data-screen="fund" hidden>
+    <header class="hdr small">
+      <div class="month-nav">
+        <button class="chev" data-goto="more" aria-label="Назад">‹</button>
+        <div class="month-name">Фонд нерегулярных трат</div>
+        <span style="width:2.2rem"></span>
+      </div>
+    </header>
+    <div class="scroll"><div id="fundBody"></div><div class="pad"></div></div>
+  </section>
+
+  <!-- ЛИМИТЫ -->
+  <section class="screen" data-screen="budgets" hidden>
+    <header class="hdr small">
+      <div class="month-nav">
+        <button class="chev" data-goto="more" aria-label="Назад">‹</button>
+        <div class="month-name">Лимиты, <span id="budMonthName"></span></div>
+        <span style="width:2.2rem"></span>
+      </div>
+    </header>
+    <div class="scroll"><div class="card"><div id="budgetList" class="rows"></div></div><div class="pad"></div></div>
+  </section>
+
+  <!-- ТАБ-БАР -->
+  <nav class="tabbar">
+    <button class="tab active" data-goto="home"><span>🏠</span>Главная</button>
+    <button class="tab" data-goto="ops"><span>📋</span>Операции</button>
+    <button class="fab" id="fab" aria-label="Добавить операцию">+</button>
+    <button class="tab" data-goto="report"><span>📊</span>Отчёт</button>
+    <button class="tab" data-goto="more"><span>⚙️</span>Ещё</button>
+  </nav>
+</div>
+
+<!-- ЭКРАН ВВОДА ОПЕРАЦИИ -->
+<div class="sheet" id="entrySheet" hidden>
+  <div class="sheet-card">
+    <div class="sheet-head">
+      <button class="sheet-x" id="entryClose">Отмена</button>
+      <div class="seg small" id="typeSeg">
+        <button class="seg-btn active" data-type="expense">Расход</button>
+        <button class="seg-btn" data-type="income">Доход</button>
+        <button class="seg-btn" data-type="transfer">Перевод</button>
+      </div>
+      <button class="sheet-ok" id="entrySave">Готово</button>
+    </div>
+
+    <div class="quick in-sheet">
+      <button class="mic" id="micSheet" aria-label="Сказать голосом">🎤</button>
+      <input id="quickSheet" class="quick-in" placeholder="Скажите или напишите: такси 300 вчера" autocomplete="off" enterkeyhint="done">
+    </div>
+
+    <div class="amount-line">
+      <span id="amountDisplay">0</span><span class="cur">₽</span>
+    </div>
+
+    <div class="entry-meta">
+      <button class="chip" id="pickAccount">💵 Наличные</button>
+      <button class="chip" id="pickCategory">Категория</button>
+      <button class="chip" id="pickDate">Сегодня</button>
+    </div>
+    <input id="noteInput" class="note" placeholder="Комментарий — виден только внутри операции" autocomplete="off">
+
+    <div class="keypad" id="keypad">
+      <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button>
+      <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button>
+      <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button>
+      <button data-k=".">,</button><button data-k="0">0</button><button data-k="del">⌫</button>
+    </div>
+  </div>
+</div>
+
+<!-- КАРТОЧКА ОПЕРАЦИИ -->
+<div class="sheet" id="txSheet" hidden>
+  <div class="sheet-card">
+    <div class="sheet-head">
+      <button class="sheet-x" id="txClose">Закрыть</button>
+      <div class="sheet-title">Операция</div>
+      <span style="width:3.5rem"></span>
+    </div>
+    <div class="picker-body" id="txBody"></div>
+  </div>
+</div>
+
+<!-- ПОДТВЕРЖДЕНИЕ РАЗБОРА -->
+<div class="sheet" id="confirmSheet" hidden>
+  <div class="sheet-card">
+    <div class="sheet-head">
+      <button class="sheet-x" id="confirmCancel">Отмена</button>
+      <div class="sheet-title" id="confirmTitle">Правильно понял?</div>
+      <span style="width:3.5rem"></span>
+    </div>
+    <div class="picker-body" id="confirmBody"></div>
+    <div class="g-actions">
+      <button class="g-btn ghost" id="confirmNo">Исправить</button>
+      <button class="g-btn" id="confirmYes">Да, всё верно</button>
+    </div>
+  </div>
+</div>
+
+<!-- ЦЕЛЬ: ПОДРОБНО -->
+<div class="sheet" id="goalSheet" hidden>
+  <div class="sheet-card">
+    <div class="sheet-head">
+      <button class="sheet-x" id="goalClose">Закрыть</button>
+      <div class="sheet-title" id="goalTitle">Цель</div>
+      <button class="sheet-ok" id="goalMenu">•••</button>
+    </div>
+    <div class="picker-body" id="goalBody"></div>
+  </div>
+</div>
+
+<!-- УНИВЕРСАЛЬНЫЙ ВЫБОР -->
+<div class="sheet" id="pickerSheet" hidden>
+  <div class="sheet-card">
+    <div class="sheet-head">
+      <button class="sheet-x" id="pickerClose">Закрыть</button>
+      <div class="sheet-title" id="pickerTitle">Выбор</div>
+      <span style="width:4rem"></span>
+    </div>
+    <div class="picker-body" id="pickerBody"></div>
+  </div>
+</div>
+
+<input type="file" id="filePicker" accept=".csv,.json,text/csv,application/json" hidden>
+<input type="file" id="receiptCamera" accept="image/*" capture="environment" hidden>
+<input type="file" id="receiptGallery" accept="image/*" hidden>
+<div id="toast" class="toast" hidden></div>
+
+<script src="data.js"></script>
+<script src="history.js"></script>
+<script src="goals.js"></script>
+<script src="plans.js"></script>
+<script src="planner.js"></script>
+<script src="vendor-jsqr.js"></script>
+<script src="receipt.js"></script>
+<script src="nlp.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
