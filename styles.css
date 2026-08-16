@@ -185,6 +185,24 @@ body.listening .mic { background: var(--red); animation: pulse 1.1s infinite; }
 .yc-bar { width: 7px; border-radius: 2px 2px 0 0; min-height: 2px; }
 .yc-l { font-size: 10px; color: var(--muted); }
 
+/* ---------- Сканер камерой ---------- */
+.scan { position: fixed; inset: 0; z-index: 60; background: #000; display: grid; place-items: center; }
+.scan[hidden] { display: none; }
+.scan video { width: 100%; height: 100%; object-fit: cover; }
+.scan-box {
+  position: absolute; width: 68vw; max-width: 320px; aspect-ratio: 1;
+  border: 3px solid rgba(255,255,255,.9); border-radius: 20px;
+  box-shadow: 0 0 0 100vmax rgba(0,0,0,.45);
+}
+.scan-hint {
+  position: absolute; bottom: calc(120px + var(--safe-b)); left: 0; right: 0;
+  text-align: center; color: #fff; font-size: 15px; text-shadow: 0 1px 4px rgba(0,0,0,.6); padding: 0 24px;
+}
+.scan-close {
+  position: absolute; bottom: calc(44px + var(--safe-b)); left: 50%; transform: translateX(-50%);
+  background: #fff; color: #12151a; font-weight: 650; font-size: 16px; padding: 13px 32px; border-radius: 999px;
+}
+
 /* ---------- Подтверждение разбора ---------- */
 .conf-amount { text-align: center; font-size: 34px; font-weight: 700; letter-spacing: -.02em; padding: 16px 16px 2px; }
 .conf-src { text-align: center; font-size: 13px; color: var(--muted); padding: 0 16px 12px; }

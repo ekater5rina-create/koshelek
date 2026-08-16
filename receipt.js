@@ -24,6 +24,32 @@ function parseReceiptQR(text) {
   return { sum, date, time: m ? `${m[4]}:${m[5]}` : '', fn: p.fn || '', fd: p.i || '', fp: p.fp || '' };
 }
 
+/* Один кадр: рисуем источник (видео, картинку, холст) и ищем в нём QR.
+   Вынесено отдельно, чтобы проверять разбор без камеры. */
+const _frameCanvas = document.createElement('canvas');
+const _frameCtx = _frameCanvas.getContext('2d', { willReadFrequently: true });
+
+function scanFrame(source, sw, sh, maxSide = 900) {
+  if (!sw || !sh) return null;
+  const k = Math.min(1, maxSide / Math.max(sw, sh));
+  const w = Math.max(1, Math.round(sw * k));
+  const h = Math.max(1, Math.round(sh * k));
+  _frameCanvas.width = w;
+  _frameCanvas.height = h;
+  try {
+    _frameCtx.drawImage(source, 0, 0, w, h);
+  } catch (e) {
+    return null;
+  }
+  const data = _frameCtx.getImageData(0, 0, w, h);
+  let res = jsQR(data.data, w, h, { inversionAttempts: 'attemptBoth' });
+  if (!res) {
+    const b = boost(data);
+    if (b) res = jsQR(b.data, w, h, { inversionAttempts: 'attemptBoth' });
+  }
+  return res && res.data ? res.data : null;
+}
+
 /* Открываем картинку. createImageBitmap надёжнее старого Image: он сам
    разворачивает снимок по EXIF, понимает HEIC на айфоне и не гоняет
    многомегабайтный data-URL через память. */
@@ -234,6 +260,64 @@ function parseReceiptText(text) {
   }
   return { shop: shop || '', date, total, items, grocery };
 }
+
+/* ---------- Живая камера ----------
+   Надёжнее фотографии: кадры идут потоком, и QR ловится, как только попал в объектив. */
+const LiveScan = {
+  stream: null,
+  raf: null,
+  timer: null,
+  running: false,
+
+  async start(video, onFound, onFail) {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      return onFail('Камера в этом браузере недоступна');
+    }
+    try {
+      this.stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      });
+    } catch (e) {
+      const why = e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')
+        ? 'Нет доступа к камере. Разрешите его в настройках Safari для этого сайта.'
+        : `Камера не открылась: ${e && e.name ? e.name : e}`;
+      return onFail(why);
+    }
+
+    video.srcObject = this.stream;
+    video.setAttribute('playsinline', '');
+    video.muted = true;
+    try { await video.play(); } catch (e) { /* некоторые браузеры играют и без этого */ }
+
+    this.running = true;
+    // Если за минуту ничего не нашлось — закрываем сами, чтобы камера не жгла батарею.
+    this.timer = setTimeout(() => { if (this.running) { this.stop(video); onFail('Не нашёл QR-код за минуту'); } }, 60000);
+
+    const tick = () => {
+      if (!this.running) return;
+      const raw = scanFrame(video, video.videoWidth, video.videoHeight);
+      if (raw) {
+        this.stop(video);
+        return onFound(raw);
+      }
+      this.raf = requestAnimationFrame(tick);
+    };
+    this.raf = requestAnimationFrame(tick);
+  },
+
+  stop(video) {
+    this.running = false;
+    clearTimeout(this.timer);
+    if (this.raf) cancelAnimationFrame(this.raf);
+    this.raf = null;
+    if (this.stream) {
+      for (const t of this.stream.getTracks()) { try { t.stop(); } catch (e) {} }
+      this.stream = null;
+    }
+    if (video) { try { video.pause(); } catch (e) {} video.srcObject = null; }
+  },
+};
 
 /* Группировка позиций по категориям для разноса операций. */
 function groupReceipt(items) {

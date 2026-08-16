@@ -145,6 +145,13 @@
         </div>
       </div>
       <div class="card">
+        <div class="card-head"><span>О приложении</span></div>
+        <div class="rows">
+          <button class="row" id="checkUpdate"><span class="row-ic">🔄</span><span>Проверить обновление<span class="row-sub" id="appVersion"></span></span><span class="row-go">›</span></button>
+        </div>
+      </div>
+
+      <div class="card">
         <div class="card-head"><span>Оформление</span></div>
         <div class="seg wide" id="themeSeg">
           <button class="seg-btn" data-theme="auto">Как в системе</button>
@@ -262,6 +269,14 @@
       <button data-k=".">,</button><button data-k="0">0</button><button data-k="del">⌫</button>
     </div>
   </div>
+</div>
+
+<!-- СКАНЕР КАМЕРОЙ -->
+<div class="scan" id="scanOverlay" hidden>
+  <video id="scanVideo" playsinline muted></video>
+  <div class="scan-box"></div>
+  <div class="scan-hint">Наведите камеру на QR-код чека</div>
+  <button class="scan-close" id="scanClose">Закрыть</button>
 </div>
 
 <!-- КАРТОЧКА ОПЕРАЦИИ -->

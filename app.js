@@ -3,6 +3,9 @@
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
+/* Версию видно в «Ещё» — так сразу понятно, доехало ли обновление до телефона. */
+const APP_VERSION = '13 · сканер камерой';
+
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const MONTHS_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
 const DAYS = ['воскресенье','понедельник','вторник','среда','четверг','пятница','суббота'];
@@ -726,6 +729,7 @@ function renderMore() {
   // В опубликованной версии встроенной истории нет — незачем показывать кнопку.
   $('#loadHistory').hidden = !Object.keys(typeof HISTORY === 'object' ? HISTORY : {}).length;
   renderBackupRow();
+  $('#appVersion').textContent = `версия ${APP_VERSION}`;
 
   const pending = Plans.pending();
   $('#recBadge').textContent = pending.length ? `${pending.length} не отмечено` : '';
@@ -1092,13 +1096,57 @@ function quickAdd(text, inputEl) {
 /* ---------- Чеки ---------- */
 function openReceiptMenu() {
   openPicker('Чек', [
-    { label: 'Сфотографировать чек', icon: '📷', note: 'читаю QR-код чека', act: 'camera' },
+    { label: 'Навести камеру на QR', icon: '🎯', note: 'самый надёжный способ', act: 'live' },
     { label: 'Выбрать фото из галереи', icon: '🖼️', note: 'если чек уже сфотографирован', act: 'gallery' },
+    { label: 'Сфотографировать чек', icon: '📷', note: 'снимок, потом разбор', act: 'camera' },
+    { label: 'Ввести код из QR', icon: '⌨️', note: 'если камера не помогла', act: 'code' },
     { label: 'Вставить текст чека', icon: '📋', note: 'разнесу по категориям построчно', act: 'text' },
   ], (it) => {
-    if (it.act === 'camera') $('#receiptCamera').click();
+    if (it.act === 'live') startLiveScan();
+    else if (it.act === 'camera') $('#receiptCamera').click();
     else if (it.act === 'gallery') $('#receiptGallery').click();
+    else if (it.act === 'code') pasteQrCode();
     else pasteReceiptText();
+  });
+}
+
+/* Сканирование живой камерой. */
+function startLiveScan() {
+  const video = $('#scanVideo');
+  $('#scanOverlay').hidden = false;
+  LiveScan.start(
+    video,
+    (raw) => {
+      $('#scanOverlay').hidden = true;
+      handleQrPayload(raw);
+    },
+    (why) => {
+      $('#scanOverlay').hidden = true;
+      alert(why + '\n\nМожно ввести код из QR вручную или вставить текст чека.');
+    }
+  );
+}
+
+/* Ручной ввод содержимого QR: айфон умеет читать его штатной «Камерой»,
+   оттуда строку можно скопировать. */
+function pasteQrCode() {
+  const v = prompt('Вставьте строку из QR-кода чека.\nОна выглядит так:\nt=20260814T1932&s=1876.43&fn=…&i=…&fp=…');
+  if (!v) return;
+  handleQrPayload(v.trim());
+}
+
+function handleQrPayload(raw) {
+  const parsed = parseReceiptQR(raw);
+  if (!parsed) {
+    return alert(`Это не похоже на код кассового чека.\n\nПрочитано:\n${String(raw).slice(0, 160)}`);
+  }
+  openConfirm({
+    kind: 'receipt',
+    receipt: { shop: '', date: parsed.date, total: parsed.sum, items: [], grocery: false },
+    split: false,
+    source: `QR-код чека${parsed.time ? ', ' + parsed.time : ''}`,
+    accountId: Store.state.settings.lastAccountId || accounts()[0]?.id,
+    title: 'Правильно понял?',
   });
 }
 
@@ -1124,16 +1172,7 @@ async function handleReceiptImage(file) {
     return toast('Не смог открыть фото: ' + e.message);
   }
 
-  if (res.ok) {
-    openConfirm({
-      kind: 'receipt',
-      receipt: { shop: '', date: res.date, total: res.sum, items: [], grocery: false },
-      split: false, source: `QR-код чека${res.time ? ', ' + res.time : ''}`,
-      accountId: Store.state.settings.lastAccountId || accounts()[0]?.id,
-      title: 'Правильно понял?',
-    });
-    return;
-  }
+  if (res.ok) return handleQrPayload(res.raw);
 
   const why = {
     'foreign-qr': 'На фото есть QR, но это не кассовый чек.',
@@ -1662,6 +1701,15 @@ $('#addAccount').onclick = addAccount;
 $('#loadHistory').onclick = loadHistoryFromSheet;
 $('#addGoal').onclick = addGoal;
 $('#camHome').onclick = openReceiptMenu;
+$('#scanClose').onclick = () => { LiveScan.stop($('#scanVideo')); $('#scanOverlay').hidden = true; };
+$('#checkUpdate').onclick = async () => {
+  toast('Проверяю…');
+  try {
+    for (const r of await navigator.serviceWorker.getRegistrations()) await r.update();
+    for (const k of await caches.keys()) await caches.delete(k);
+  } catch (e) {}
+  setTimeout(() => location.reload(), 600);
+};
 $('#receiptCamera').onchange = (e) => { handleReceiptImage(e.target.files[0]); e.target.value = ''; };
 $('#receiptGallery').onchange = (e) => { handleReceiptImage(e.target.files[0]); e.target.value = ''; };
 $('#txClose').onclick = () => ($('#txSheet').hidden = true);
