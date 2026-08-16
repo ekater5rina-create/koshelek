@@ -1652,4 +1652,12 @@ go('home');
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});
+  // Когда обновлённая версия берёт управление, перезагружаем страницу один раз,
+  // иначе приложение продолжит работать на старом коде до следующего запуска.
+  let reloadedOnce = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloadedOnce) return;
+    reloadedOnce = true;
+    location.reload();
+  });
 }
