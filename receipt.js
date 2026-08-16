@@ -24,38 +24,124 @@ function parseReceiptQR(text) {
   return { sum, date, time: m ? `${m[4]}:${m[5]}` : '', fn: p.fn || '', fd: p.i || '', fp: p.fp || '' };
 }
 
-/* Читаем QR с картинки. Пробуем несколько масштабов: фото с телефона
-   обычно слишком крупное, а мелкий QR теряется при сильном уменьшении. */
-async function scanReceiptImage(file) {
-  const img = await new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => {
+/* Открываем картинку. createImageBitmap надёжнее старого Image: он сам
+   разворачивает снимок по EXIF, понимает HEIC на айфоне и не гоняет
+   многомегабайтный data-URL через память. */
+async function loadPicture(file) {
+  if (typeof createImageBitmap === 'function') {
+    try {
+      return { img: await createImageBitmap(file), via: 'bitmap' };
+    } catch (e) { /* ниже попробуем по-старому */ }
+  }
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((resolve, reject) => {
       const im = new Image();
       im.onload = () => resolve(im);
-      im.onerror = () => reject(new Error('не удалось открыть картинку'));
-      im.src = r.result;
-    };
-    r.onerror = () => reject(new Error('не удалось прочитать файл'));
-    r.readAsDataURL(file);
-  });
+      im.onerror = () => reject(new Error('формат не поддерживается'));
+      im.src = url;
+    });
+    return { img, via: 'image' };
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }
+}
 
+/* Растягиваем контраст: на термобумаге «чёрное» бывает светло-серым. */
+function boost(data) {
+  const d = data.data;
+  let min = 255, max = 0;
+  for (let i = 0; i < d.length; i += 16) {
+    const v = (d[i] * 3 + d[i + 1] * 6 + d[i + 2]) / 10;
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  const range = max - min;
+  if (range < 10 || range > 200) return null;
+  const k = 255 / range;
+  const out = new ImageData(data.width, data.height);
+  for (let i = 0; i < d.length; i += 4) {
+    const v = Math.max(0, Math.min(255, ((d[i] * 3 + d[i + 1] * 6 + d[i + 2]) / 10 - min) * k));
+    out.data[i] = out.data[i + 1] = out.data[i + 2] = v;
+    out.data[i + 3] = 255;
+  }
+  return out;
+}
+
+/* Читаем QR с фотографии. Фото с телефона огромное, а QR на нём мелкий,
+   поэтому идём несколькими масштабами, а потом по кускам кадра. */
+async function scanReceiptImage(file) {
+  const t0 = Date.now();
+  const log = [];
+  let img, via;
+  try {
+    ({ img, via } = await loadPicture(file));
+  } catch (e) {
+    return { ok: false, reason: 'unreadable', report: `Не удалось открыть файл: ${e.message}` };
+  }
+
+  const W = img.width, H = img.height;
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  let attempts = 0, blank = 0;
 
-  for (const maxSide of [1600, 1000, 2400, 700]) {
-    const k = Math.min(1, maxSide / Math.max(img.width, img.height));
-    canvas.width = Math.round(img.width * k);
-    canvas.height = Math.round(img.height * k);
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const res = jsQR(data.data, data.width, data.height, { inversionAttempts: 'attemptBoth' });
-    if (res && res.data) {
-      const parsed = parseReceiptQR(res.data);
-      if (parsed) return { ok: true, ...parsed, raw: res.data };
-      return { ok: false, reason: 'foreign-qr', raw: res.data };
+  const tryPiece = (sx, sy, sw, sh, outW, label) => {
+    const outH = Math.max(1, Math.round((sh / sw) * outW));
+    canvas.width = outW;
+    canvas.height = outH;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, outW, outH);
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, outW, outH);
+    const data = ctx.getImageData(0, 0, outW, outH);
+    attempts++;
+
+    // На айфоне слишком большой холст иногда возвращается пустым — это видно сразу.
+    let allWhite = true;
+    for (let i = 0; i < data.data.length; i += 4000) {
+      if (data.data[i] < 245) { allWhite = false; break; }
     }
+    if (allWhite) { blank++; log.push(`${label}: пусто`); return null; }
+
+    let res = jsQR(data.data, outW, outH, { inversionAttempts: 'attemptBoth' });
+    if (!res) {
+      const b = boost(data);
+      if (b) res = jsQR(b.data, outW, outH, { inversionAttempts: 'attemptBoth' });
+    }
+    if (res && res.data) { log.push(`${label}: найден`); return res.data; }
+    return null;
+  };
+
+  const pieces = [];
+  // Весь кадр в нескольких размерах.
+  for (const side of [1400, 2000, 900, 2800]) pieces.push([0, 0, W, H, Math.min(side, Math.max(W, H)), `кадр ${side}`]);
+  // Центр — туда обычно и целятся.
+  pieces.push([W * 0.15, H * 0.15, W * 0.7, H * 0.7, 1400, 'центр']);
+  // Четверти с нахлёстом: мелкий QR разбирается в своём куске крупнее.
+  for (const [ix, iy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+    pieces.push([ix * W * 0.42, iy * H * 0.42, W * 0.58, H * 0.58, 1200, `четверть ${ix}${iy}`]);
   }
-  return { ok: false, reason: 'no-qr' };
+
+  for (const [sx, sy, sw, sh, side, label] of pieces) {
+    let raw = null;
+    try {
+      raw = tryPiece(Math.round(sx), Math.round(sy), Math.round(sw), Math.round(sh), Math.round(side), label);
+    } catch (e) {
+      log.push(`${label}: ошибка ${e.message}`);
+      continue;
+    }
+    if (!raw) continue;
+    const parsed = parseReceiptQR(raw);
+    if (parsed) return { ok: true, ...parsed, raw };
+    return { ok: false, reason: 'foreign-qr', raw, report: `Найден QR, но это не кассовый чек:\n${String(raw).slice(0, 120)}` };
+  }
+
+  return {
+    ok: false,
+    reason: blank === attempts ? 'blank' : 'no-qr',
+    report: `Фото: ${W}×${H}, ${Math.round(file.size / 1024)} КБ, тип ${file.type || 'неизвестен'}\n` +
+            `Способ открытия: ${via}\nПопыток: ${attempts}${blank ? `, пустых кадров: ${blank}` : ''}\n` +
+            `Время: ${Date.now() - t0} мс\n${log.join('; ') || 'QR не найден ни в одном фрагменте'}`,
+  };
 }
 
 /* ---------- 2. Разбор текста чека ---------- */

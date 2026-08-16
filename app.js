@@ -1135,10 +1135,22 @@ async function handleReceiptImage(file) {
     return;
   }
 
-  const why = res.reason === 'foreign-qr'
-    ? 'На фото есть QR, но это не кассовый чек.'
-    : 'QR-код на фото не нашёлся — снимите его крупнее и без бликов.';
-  if (confirm(`${why}\n\nРазобрать чек по тексту? На айфоне можно выделить текст прямо на фото и скопировать.`)) pasteReceiptText();
+  const why = {
+    'foreign-qr': 'На фото есть QR, но это не кассовый чек.',
+    unreadable: 'Не удалось открыть это фото.',
+    blank: 'Снимок слишком большой — телефон не смог его обработать. Попробуйте снять QR крупным планом.',
+    'no-qr': 'QR-код на фото не нашёлся. Снимите его крупнее, ровно и без бликов.',
+  }[res.reason] || 'Не получилось прочитать QR.';
+
+  openPicker(why, [
+    { label: 'Ввести сумму вручную', icon: '✏️', note: 'быстрее всего', act: 'manual' },
+    { label: 'Вставить текст чека', icon: '📋', note: 'разнесу по категориям', act: 'text' },
+    { label: 'Показать, что не получилось', icon: '🔎', note: 'подробности для разбора', act: 'why' },
+  ], (it) => {
+    if (it.act === 'text') pasteReceiptText();
+    else if (it.act === 'why') alert(res.report || why);
+    else openEntry(null);
+  });
 }
 
 function wireQuick(inputId, micId, goId) {
