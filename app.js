@@ -4,7 +4,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 /* Версию видно в «Ещё» — так сразу понятно, доехало ли обновление до телефона. */
-const APP_VERSION = '14 · сканер с диагностикой';
+const APP_VERSION = '15 · переводы между счетами';
 
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const MONTHS_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
@@ -191,7 +191,7 @@ function payRecurring(id) {
     draft: {
       type: 'expense', amount: r.amount, category: r.cat, subcategory: r.sub,
       date: todayISO(), note: '', accountId: r.accountId || Store.state.settings.lastAccountId || accounts()[0]?.id,
-      toAccountId: accounts()[1]?.id,
+      toAccountId: null,
     },
   });
 }
@@ -777,7 +777,7 @@ function openEntry(existing) {
         type: 'expense',
         raw: '0',
         accountId: Store.state.settings.lastAccountId || accounts()[0]?.id,
-        toAccountId: accounts()[1]?.id,
+        toAccountId: null,
         category: '',
         subcategory: '',
         date: todayISO(),
@@ -795,11 +795,16 @@ function renderEntry() {
 
   const acc = accountById(d.accountId);
   if (d.type === 'transfer') {
+    // Два независимых чипа: любой из счетов можно поменять отдельно,
+    // не проходя цепочку окон заново.
     const to = accountById(d.toAccountId);
-    $('#pickAccount').textContent = `${acc?.icon || ''} ${acc?.name || '—'} → ${to?.icon || ''} ${to?.name || '—'}`;
+    $('#pickAccount').textContent = `Откуда: ${acc?.icon || ''} ${acc?.name || 'выбрать'}`;
+    $('#pickTo').hidden = false;
+    $('#pickTo').textContent = `Куда: ${to?.icon || ''} ${to?.name || 'выбрать'}`;
     $('#pickCategory').hidden = true;
   } else {
     $('#pickAccount').textContent = `${acc?.icon || ''} ${acc?.name || 'Счёт'}`;
+    $('#pickTo').hidden = true;
     $('#pickCategory').hidden = false;
     $('#pickCategory').textContent = d.category
       ? `${catMeta(d.type, d.category).icon} ${d.category}${d.subcategory ? ' · ' + d.subcategory : ''}`
@@ -833,7 +838,8 @@ function saveEntry() {
   if (!amount || amount <= 0) return toast('Введите сумму');
   if (!d.accountId) return toast('Выберите счёт');
   if (d.type === 'transfer') {
-    if (!d.toAccountId || d.toAccountId === d.accountId) return toast('Выберите разные счета');
+    if (!d.toAccountId) return toast('Нажмите «Куда» и выберите счёт получателя');
+    if (d.toAccountId === d.accountId) return toast('Счета «Откуда» и «Куда» должны отличаться');
   } else if (!d.category) return toast('Выберите категорию');
 
   const tx = {
@@ -1087,7 +1093,7 @@ function quickAdd(text, inputEl) {
       date: parsed.date,
       note: parsed.note,
       accountId: parsed.accountId || Store.state.settings.lastAccountId || accounts()[0]?.id,
-      toAccountId: accounts()[1]?.id,
+      toAccountId: null,
     },
   });
   return true;
@@ -1385,17 +1391,33 @@ function pickCategory() {
 
 function pickAccount() {
   const d = ui.draft;
-  const mk = (sel) => accounts().map((a) => ({ label: a.name, icon: a.icon, color: a.color, note: money(balanceOf(a.id)), selected: a.id === sel, id: a.id }));
+  const mk = (sel, skip) => accounts()
+    .filter((a) => a.id !== skip)
+    .map((a) => ({ label: a.name, icon: a.icon, color: a.color, note: money(balanceOf(a.id)), selected: a.id === sel, id: a.id }));
+
   if (d.type !== 'transfer') {
     openPicker('Счёт', mk(d.accountId), (it) => { d.accountId = it.id; renderEntry(); });
     return;
   }
   openPicker('Откуда', mk(d.accountId), (it) => {
     d.accountId = it.id;
-    setTimeout(() => openPicker('Куда', mk(d.toAccountId).filter((x) => x.id !== d.accountId), (t) => { d.toAccountId = t.id; renderEntry(); }), 60);
+    // Нельзя переводить на тот же счёт — подставляем другой.
+    if (d.toAccountId === d.accountId) d.toAccountId = otherAccount(d.accountId);
     renderEntry();
   });
 }
+
+function pickToAccount() {
+  const d = ui.draft;
+  const items = accounts()
+    .filter((a) => a.id !== d.accountId)
+    .map((a) => ({ label: a.name, icon: a.icon, color: a.color, note: money(balanceOf(a.id)), selected: a.id === d.toAccountId, id: a.id }));
+  if (!items.length) return toast('Нужен ещё один счёт — добавьте его в «Ещё»');
+  openPicker('Куда', items, (it) => { d.toAccountId = it.id; renderEntry(); });
+}
+
+/* Первый счёт, отличный от указанного. */
+const otherAccount = (notId) => (accounts().find((a) => a.id !== notId) || {}).id || null;
 
 function pickDate() {
   const d = ui.draft;
@@ -1696,6 +1718,7 @@ $('#entryClose').onclick = () => ($('#entrySheet').hidden = true);
 $('#entrySave').onclick = saveEntry;
 $('#pickerClose').onclick = () => ($('#pickerSheet').hidden = true);
 $('#pickAccount').onclick = pickAccount;
+$('#pickTo').onclick = pickToAccount;
 $('#pickCategory').onclick = pickCategory;
 $('#pickDate').onclick = pickDate;
 $('#keypad').onclick = (e) => { const b = e.target.closest('[data-k]'); if (b) keypad(b.dataset.k); };
@@ -1705,6 +1728,9 @@ $('#typeSeg').onclick = (e) => {
   ui.draft.type = b.dataset.type;
   ui.draft.category = '';
   ui.draft.subcategory = '';
+  if (ui.draft.type === 'transfer' && (!ui.draft.toAccountId || ui.draft.toAccountId === ui.draft.accountId)) {
+    ui.draft.toAccountId = otherAccount(ui.draft.accountId);
+  }
   renderEntry();
 };
 $$('.sheet').forEach((s) => s.addEventListener('click', (e) => { if (e.target === s) s.hidden = true; }));
