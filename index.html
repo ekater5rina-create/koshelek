@@ -136,6 +136,7 @@
         <div class="rows">
           <button class="row" id="makeBackup"><span class="row-ic">💾</span><span>Сохранить копию<span class="row-sub" id="backupStatus"></span></span><span class="row-go">›</span></button>
           <button class="row" id="importJson"><span class="row-ic">♻️</span><span>Восстановить из копии</span><span class="row-go">›</span></button>
+          <button class="row" id="storageInfo"><span class="row-ic">🛡️</span><span>Надёжность хранения<span class="row-sub" id="storageLine"></span></span><span class="row-go">›</span></button>
           <button class="row" id="backupRemind"><span class="row-ic">⏰</span><span>Напоминать о копии</span><span class="row-val" id="backupRemindVal"></span><span class="row-go">›</span></button>
           <button class="row" id="importPlanner"><span class="row-ic">📗</span><span>Импорт файла «Планировщик бюджета»<span class="row-sub">CSV, выгруженный из вашей таблицы</span></span><span class="row-go">›</span></button>
           <button class="row" id="loadHistory"><span class="row-ic">📊</span><span>Загрузить историю за 2026<span class="row-sub">встроенная копия вашей таблицы</span></span><span class="row-go">›</span></button>
@@ -342,6 +343,7 @@
 <input type="file" id="receiptGallery" accept="image/*" hidden>
 <div id="toast" class="toast" hidden></div>
 
+<script src="storage.js"></script>
 <script src="data.js"></script>
 <script src="history.js"></script>
 <script src="goals.js"></script>

@@ -4,7 +4,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 /* Версию видно в «Ещё» — так сразу понятно, доехало ли обновление до телефона. */
-const APP_VERSION = '15 · переводы между счетами';
+const APP_VERSION = '16 · защита данных';
 
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const MONTHS_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
@@ -729,6 +729,7 @@ function renderMore() {
   // В опубликованной версии встроенной истории нет — незачем показывать кнопку.
   $('#loadHistory').hidden = !Object.keys(typeof HISTORY === 'object' ? HISTORY : {}).length;
   renderBackupRow();
+  renderStorageLine();
   $('#appVersion').textContent = `версия ${APP_VERSION}`;
 
   const pending = Plans.pending();
@@ -1798,6 +1799,7 @@ $('#goalMenu').onclick = () => {
 };
 $('#exportCsv').onclick = () => { download(`koshelek-${todayISO()}.csv`, toCsv(), 'text/csv;charset=utf-8'); toast('Файл выгружен'); };
 $('#makeBackup').onclick = doBackup;
+$('#storageInfo').onclick = showStorageInfo;
 $('#backupRemind').onclick = () => {
   Store.state.settings.backupRemind = Store.state.settings.backupRemind === false;
   Store.save();
@@ -1834,10 +1836,99 @@ $('#budgetList').addEventListener('change', (e) => {
   Store.save();
 });
 
+
+/* Показываем, где и как лежат данные, чтобы риск был виден заранее. */
+async function showStorageInfo() {
+  const r = await storageReport();
+  const snaps = await Snapshots.list();
+  const kb = Math.round(JSON.stringify(Store.state).length / 1024);
+  const lines = [
+    'Основное хранилище: память браузера на этом телефоне',
+    'Занято приложением: ' + kb + ' КБ',
+    r.quotaKb ? ('Всего доступно: примерно ' + Math.round(r.quotaKb / 1024) + ' МБ') : null,
+    r.persisted === true ? 'Постоянное хранение: включено, система не удалит данные сама'
+      : r.persisted === false ? 'Постоянное хранение: не включено — система может очистить данные при нехватке места'
+      : 'Постоянное хранение: браузер не сообщает',
+    '',
+    'Запасные снимки: ' + snaps.length + (snaps.length ? ' (последний ' + new Date(snaps[0].at).toLocaleString('ru-RU') + ', операций ' + snaps[0].count + ')' : ''),
+    'Снимки делаются автоматически при каждом изменении и лежат в отдельном хранилище.',
+    '',
+    Backup.daysSince() === null ? 'Файл-копия: ещё не делали' : 'Файл-копия: ' + Backup.daysSince() + ' дн. назад, операций ' + (Store.state.settings.lastBackupCount || 0),
+    '',
+    'Надёжнее всего — файл-копия: она переживает и очистку браузера, и потерю телефона.',
+  ].filter(Boolean);
+  if (confirm(lines.join(String.fromCharCode(10)) + String.fromCharCode(10) + String.fromCharCode(10) + 'Сделать копию сейчас?')) doBackup();
+}
+
+async function renderStorageLine() {
+  const el = $('#storageLine');
+  if (!el) return;
+  const r = await storageReport();
+  const kb = Math.round(JSON.stringify(Store.state).length / 1024);
+  el.textContent = kb + ' КБ · снимков ' + r.snapshots + (r.persisted === true ? ' · постоянное хранение' : '');
+}
+
+/* ---------- Защита данных ---------- */
+
+const NL = String.fromCharCode(10);
+
+/* Если запись в основное хранилище сорвалась — говорим об этом громко:
+   молча потерянная операция хуже неудобного окна. */
+document.addEventListener('store:savefailed', (e) => {
+  if (ui.saveWarned) return;
+  ui.saveWarned = true;
+  alert([
+    'Не удалось сохранить данные в память телефона.',
+    '',
+    'Причина: ' + (e.detail || 'неизвестна'),
+    '',
+    'Операции пока держатся в памяти приложения, но пропадут при его закрытии.',
+    'Прямо сейчас сделайте копию: «Ещё» → «Сохранить копию».',
+  ].join(NL));
+});
+
+/* При запуске проверяем, не потерялось ли основное хранилище. */
+async function checkStorageHealth() {
+  requestPersistentStorage();
+  const empty = !Store.state.transactions.length && !Store.state.accounts.some((a) => a.initial);
+  if (!empty && !Store.loadBroken) return;
+
+  const snap = await Snapshots.newest();
+  if (!snap || !snap.count) return;
+
+  const when = new Date(snap.at).toLocaleString('ru-RU');
+  const what = Store.loadBroken ? 'Данные приложения повреждены' : 'Данные приложения пусты';
+  const ask = [
+    what + ', но есть сохранённый снимок:',
+    '',
+    when + ', операций: ' + snap.count,
+    '',
+    'Восстановить из него?',
+  ].join(NL);
+  if (confirm(ask)) {
+    try {
+      Store.replaceAll(JSON.parse(snap.json));
+      render();
+      toast('Восстановлено ' + Store.state.transactions.length + ' операций');
+    } catch (err) {
+      alert('Снимок прочитать не удалось: ' + err.message);
+    }
+  }
+}
+
+/* Камера и микрофон не должны продолжать работать, когда приложение свернули:
+   иначе телефон греется, а приложение начинает подтормаживать. */
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'hidden') return;
+  if (LiveScan.running) { LiveScan.stop($('#scanVideo')); $('#scanOverlay').hidden = true; }
+  if (Voice.active) Voice.stop($('#quickHome'));
+});
+
 /* ---------- Старт ---------- */
 Store.load();
 applyTheme();
 go('home');
+checkStorageHealth();
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});

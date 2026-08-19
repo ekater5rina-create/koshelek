@@ -67,18 +67,33 @@ const Store = {
         }
       }
     } catch (e) {
-      console.warn('Не удалось прочитать сохранённые данные, начинаем с чистого листа', e);
+      console.warn('Данные в основном хранилище испорчены', e);
       this.state = emptyState();
+      this.loadBroken = true;
     }
     return this.state;
   },
 
+  /* rev растёт при каждом изменении — по нему сбрасываются кэши расчётов. */
+  rev: 0,
+  saveFailed: false,
+
   save() {
+    const json = JSON.stringify(this.state);
     try {
-      localStorage.setItem(STORE_KEY, JSON.stringify(this.state));
+      localStorage.setItem(STORE_KEY, json);
+      // Проверяем, что запись действительно легла: на переполненном хранилище
+      // Safari умеет «сохранить» молча и ничего не записать.
+      const back = localStorage.getItem(STORE_KEY);
+      if (!back || back.length !== json.length) throw new Error('запись не подтвердилась');
+      this.saveFailed = false;
     } catch (e) {
-      alert('Не удалось сохранить данные: ' + e.message);
+      this.saveFailed = true;
+      document.dispatchEvent(new CustomEvent('store:savefailed', { detail: String(e && e.message || e) }));
     }
+    // Снимок в отдельное хранилище — страховка на случай потери основного.
+    if (typeof Snapshots !== 'undefined') Snapshots.put(json, this.state.transactions.length);
+    this.rev++;
     document.dispatchEvent(new CustomEvent('store:changed'));
   },
 
