@@ -4,7 +4,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 /* Версию видно в «Ещё» — так сразу понятно, доехало ли обновление до телефона. */
-const APP_VERSION = '16 · защита данных';
+const APP_VERSION = '17 · точность нажатий';
 
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const MONTHS_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
@@ -104,6 +104,24 @@ function byCategory(key, type) {
     if (type === 'income' && f < 0) add(SAVINGS_OUT, t.amount);
   }
   return [...map.entries()].map(([name, sum]) => ({ name, sum })).sort((a, b) => b.sum - a.sum);
+}
+
+/* Айфон досылает отложенный клик уже после того, как открылось новое окно,
+   и он попадает не туда: то в фон и закрывает окно, то в кнопку под пальцем.
+   Настоящее касание всегда начинается с нажатия пальцем внутри нового окна,
+   у отложенного клика такого нажатия нет — по этому и различаем. */
+function showSheet(sel) {
+  const el = $(sel);
+  el.dataset.armed = "0";
+  el.hidden = false;
+}
+function notArmed(el) {
+  return !el || el.dataset.armed !== "1";
+}
+for (const el of $$(".sheet, .scan")) {
+  for (const ev of ["pointerdown", "mousedown", "touchstart"]) {
+    el.addEventListener(ev, () => { el.dataset.armed = "1"; }, { capture: true, passive: true });
+  }
 }
 
 /* ---------- Навигация ---------- */
@@ -465,7 +483,7 @@ function openGoal(id) {
     </div>`;
 
   $('#goalBody').innerHTML = html;
-  $('#goalSheet').hidden = false;
+  showSheet('#goalSheet');
   $('#goalTopUp').onclick = () => topUpGoal(g);
   $('#goalEdit').onclick = () => editGoal(g);
 }
@@ -785,7 +803,7 @@ function openEntry(existing) {
         note: '',
       };
   $('#noteInput').value = ui.draft.note || '';
-  $('#entrySheet').hidden = false;
+  showSheet('#entrySheet');
   renderEntry();
 }
 
@@ -872,7 +890,7 @@ function openConfirm(state) {
   ui.confirm = state;
   $('#confirmTitle').textContent = state.title || 'Правильно понял?';
   renderConfirm();
-  $('#confirmSheet').hidden = false;
+  showSheet('#confirmSheet');
 }
 
 function renderConfirm() {
@@ -1018,7 +1036,7 @@ function confirmFix(what) {
       d.category = it.cat.name; d.subcategory = '';
       if (it.cat.subs.length) {
         const subs = [{ label: 'Без подкатегории', icon: it.cat.icon, sub: '' }].concat(it.cat.subs.map((s) => ({ label: s, icon: it.cat.icon, sub: s })));
-        setTimeout(() => openPicker(it.cat.name, subs, (s) => { d.subcategory = s.sub; renderConfirm(); }), 60);
+        openPicker(it.cat.name, subs, (s) => { d.subcategory = s.sub; renderConfirm(); });
       }
       renderConfirm();
     });
@@ -1050,7 +1068,7 @@ function confirmFix(what) {
       c.singleCat = { cat: it.cat.name, sub: '' };
       if (it.cat.subs.length) {
         const subs = it.cat.subs.map((s) => ({ label: s, icon: it.cat.icon, sub: s }));
-        setTimeout(() => openPicker(it.cat.name, subs, (s) => { c.singleCat.sub = s.sub; renderConfirm(); }), 60);
+        openPicker(it.cat.name, subs, (s) => { c.singleCat.sub = s.sub; renderConfirm(); });
       }
       renderConfirm();
     });
@@ -1067,7 +1085,7 @@ function fixReceiptItem(idx) {
     item.sub = '';
     if (it.cat.subs.length) {
       const subs = [{ label: 'Без подкатегории', icon: it.cat.icon, sub: '' }].concat(it.cat.subs.map((s) => ({ label: s, icon: it.cat.icon, sub: s })));
-      setTimeout(() => openPicker(it.cat.name, subs, (s) => { item.sub = s.sub; renderConfirm(); }), 60);
+      openPicker(it.cat.name, subs, (s) => { item.sub = s.sub; renderConfirm(); });
     }
     renderConfirm();
   });
@@ -1126,7 +1144,7 @@ function closeScan() {
 function startLiveScan() {
   const video = $('#scanVideo');
   $('#scanHint').textContent = 'Наведите камеру на QR-код чека';
-  $('#scanOverlay').hidden = false;
+  showSheet('#scanOverlay');
   LiveScan.start(
     video,
     (raw) => { closeScan(); handleQrPayload(raw); },
@@ -1365,8 +1383,9 @@ function openPicker(title, items, onPick) {
       <div>${it.selected ? '✓' : ''}</div></button>`
     )
     .join('');
-  $('#pickerSheet').hidden = false;
+  showSheet('#pickerSheet');
   $('#pickerBody').onclick = (e) => {
+    if (notArmed($('#pickerSheet'))) return;
     const b = e.target.closest('.pick');
     if (!b) return;
     $('#pickerSheet').hidden = true;
@@ -1384,7 +1403,7 @@ function pickCategory() {
       const subs = [{ label: 'Без подкатегории', icon: it.cat.icon, color: it.cat.color, sub: '' }].concat(
         it.cat.subs.map((s) => ({ label: s, icon: it.cat.icon, color: it.cat.color, sub: s }))
       );
-      setTimeout(() => openPicker(it.cat.name, subs, (s) => { d.subcategory = s.sub; renderEntry(); }), 60);
+      openPicker(it.cat.name, subs, (s) => { d.subcategory = s.sub; renderEntry(); });
     }
     renderEntry();
   });
@@ -1692,7 +1711,7 @@ function openTxDetail(t) {
     </div>`;
 
   $('#txBody').innerHTML = html;
-  $('#txSheet').hidden = false;
+  showSheet('#txSheet');
 
   $('#txNote').onclick = () => {
     const v = prompt('Комментарий к операции', t.note || '');
@@ -1734,7 +1753,9 @@ $('#typeSeg').onclick = (e) => {
   }
   renderEntry();
 };
-$$('.sheet').forEach((s) => s.addEventListener('click', (e) => { if (e.target === s) s.hidden = true; }));
+$('.sheet').forEach((s) => s.addEventListener('click', (e) => {
+  if (e.target === s && !tooSoon(s)) s.hidden = true;
+}));
 
 const shiftMonth = (key, delta) => {
   const d = parseKey(key);
@@ -1779,7 +1800,7 @@ $('#confirmNo').onclick = () => {
     renderEntry();
   } else if (c) {
     toast('Нажмите на любую строку, чтобы её поправить');
-    $('#confirmSheet').hidden = false;
+    showSheet('#confirmSheet');
     return;
   }
   ui.confirm = null;
