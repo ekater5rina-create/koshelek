@@ -9,7 +9,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 /* Версию видно в «Ещё» — так сразу понятно, доехало ли обновление до телефона. */
-const APP_VERSION = '18 · восстановление данных';
+const APP_VERSION = '19 · калькулятор сумм';
 
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const MONTHS_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
@@ -795,11 +795,14 @@ function toast(msg) {
 /* ---------- Ввод операции ---------- */
 function openEntry(existing) {
   ui.draft = existing
-    ? { ...existing, raw: String(existing.amount) }
+    ? { ...existing, raw: String(existing.amount), acc: null, op: null, done: false }
     : {
         id: null,
         type: 'expense',
         raw: '0',
+        acc: null,
+        op: null,
+        done: false,
         accountId: Store.state.settings.lastAccountId || accounts()[0]?.id,
         toAccountId: null,
         category: '',
@@ -815,7 +818,11 @@ function openEntry(existing) {
 function renderEntry() {
   const d = ui.draft;
   $$('#typeSeg .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.type === d.type));
-  $('#amountDisplay').textContent = (d.raw || '0').replace('.', ',');
+  // В большой строке — то, что вводится сейчас; выше — незавершённое действие.
+  $('#amountDisplay').textContent = d.raw === '' ? showNum(d.acc == null ? 0 : d.acc) : showNum(d.raw);
+  $('#exprLine').textContent = d.op && d.acc != null
+    ? showNum(d.acc) + ' ' + OP_SIGN[d.op] + (d.raw === '' ? '' : ' ' + showNum(d.raw) + ' = ' + showNum(draftAmount(d)))
+    : '';
 
   const acc = accountById(d.accountId);
   if (d.type === 'transfer') {
@@ -842,24 +849,79 @@ const formatDate = (iso) => {
   return `${dt.getDate()} ${MONTHS_SHORT[dt.getMonth()].toLowerCase()} ${dt.getFullYear()}`;
 };
 
+/* Клавиатура сумм умеет складывать: «250 + 340 + 90» вводится подряд,
+   а в операцию попадает итог. Держим накопленное значение, текущее число
+   и незавершённое действие. */
+const OP_SIGN = { '+': '+', '-': '−', '*': '×' };
+const numOf = (raw) => parseFloat(String(raw || '0').replace(',', '.')) || 0;
+
+function applyOp(a, op, b) {
+  const r = op === '+' ? a + b : op === '-' ? a - b : a * b;
+  return Math.round(r * 100) / 100;
+}
+
+/* Итоговая сумма черновика с учётом незавершённого действия. */
+function draftAmount(d) {
+  const cur = d.raw === '' ? null : numOf(d.raw);
+  if (d.op && d.acc != null) return applyOp(d.acc, d.op, cur == null ? 0 : cur);
+  if (cur == null && d.acc != null) return d.acc;
+  return cur == null ? 0 : cur;
+}
+
 function keypad(k) {
   const d = ui.draft;
-  let raw = d.raw || '0';
-  if (k === 'del') raw = raw.length > 1 ? raw.slice(0, -1) : '0';
-  else if (k === '.') { if (!raw.includes('.')) raw += '.'; }
-  else {
-    if (raw === '0') raw = k;
-    else if (raw.includes('.') && raw.split('.')[1].length >= 2) return;
-    else raw += k;
+  if (d.acc === undefined) d.acc = null;
+  if (d.op === undefined) d.op = null;
+
+  if (k === 'del') {
+    if (d.raw === '' && d.op) { d.op = null; d.raw = d.acc == null ? '0' : String(d.acc); d.acc = null; }
+    else d.raw = d.raw.length > 1 ? d.raw.slice(0, -1) : '0';
+    d.done = false;
+  } else if (k === '+' || k === '-' || k === '*') {
+    // Нажали действие второй раз подряд — меняем его, а не считаем.
+    if (d.raw === '' && d.op) { d.op = k; d.done = false; renderEntry(); return; }
+    const cur = d.raw === '' ? (d.acc == null ? 0 : d.acc) : numOf(d.raw);
+    d.acc = d.op != null && d.acc != null ? applyOp(d.acc, d.op, cur) : cur;
+    d.op = k;
+    d.raw = '';
+    d.done = false;
+  } else if (k === '=') {
+    if (d.op && d.acc != null) {
+      d.acc = applyOp(d.acc, d.op, d.raw === '' ? 0 : numOf(d.raw));
+      d.raw = String(d.acc);
+      d.acc = null;
+      d.op = null;
+      d.done = true;
+    }
+  } else if (k === '.') {
+    if (d.raw === '') d.raw = '0.';
+    else if (!d.raw.includes('.')) d.raw += '.';
+    d.done = false;
+  } else {
+    // Цифра после «=» начинает новый ввод, а не дописывается к результату.
+    if (d.done) { d.raw = '0'; d.done = false; }
+    if (d.raw === '' || d.raw === '0') d.raw = k;
+    else if (d.raw.includes('.') && d.raw.split('.')[1].length >= 2) return;
+    else d.raw += k;
   }
-  d.raw = raw;
   renderEntry();
+}
+
+/* Число для показа: без хвостовых нулей, с пробелами по разрядам. */
+function showNum(v) {
+  if (typeof v === 'string') {
+    const [int, frac] = v.split('.');
+    const head = Number(int || 0).toLocaleString('ru-RU');
+    return v.includes('.') ? head + ',' + (frac || '') : head;
+  }
+  return v.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
 }
 
 function saveEntry() {
   const d = ui.draft;
-  const amount = Math.round(parseFloat(d.raw || '0') * 100) / 100;
-  if (!amount || amount <= 0) return toast('Введите сумму');
+  const amount = draftAmount(d);
+  if (amount < 0) return toast('Итог получился отрицательным — проверьте вычитание');
+  if (!amount) return toast('Введите сумму');
   if (!d.accountId) return toast('Выберите счёт');
   if (d.type === 'transfer') {
     if (!d.toAccountId) return toast('Нажмите «Куда» и выберите счёт получателя');

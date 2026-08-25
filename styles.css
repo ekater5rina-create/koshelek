@@ -300,9 +300,18 @@ body.listening .mic { background: var(--red); animation: pulse 1.1s infinite; }
 .note { margin: 0 14px 10px; padding: 10px 12px; font-size: 15px; background: var(--card-2); border: 1px solid var(--line); border-radius: 12px; color: var(--text); }
 .note::placeholder { color: var(--muted); }
 
-.keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 4px 12px 14px; }
-.keypad button { height: 56px; border-radius: 14px; background: var(--card-2); font-size: 24px; font-weight: 500; }
+.keypad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; padding: 4px 12px 14px; }
+.keypad button { height: 52px; border-radius: 14px; background: var(--card-2); font-size: 22px; font-weight: 500; }
 .keypad button:active { background: var(--line); }
+.keypad button.op { background: var(--card); color: var(--accent); font-weight: 650; box-shadow: inset 0 0 0 1px var(--line); }
+.keypad button.op.eq { background: var(--accent); color: #fff; box-shadow: none; }
+
+/* Строка с незавершённым действием: «250 + 340 = 590» */
+.expr-line {
+  min-height: 20px; text-align: center; color: var(--muted);
+  font-size: 14px; padding: 10px 16px 0; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
 
 .picker-body { overflow-y: auto; padding: 6px 0 12px; }
 .pick {
