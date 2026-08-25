@@ -1,10 +1,15 @@
 /* Кошелёк — учёт наличных и счетов. Вся логика приложения. */
 
+/* Данные читаем сразу при загрузке скрипта. Так они окажутся в памяти даже
+   если ниже что-то сломается: раньше падение на любой строке означало старт
+   с пустым состоянием, которое затем затирало сохранённые операции. */
+try { Store.load(); } catch (e) { console.error('Ошибка чтения данных', e); }
+
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 /* Версию видно в «Ещё» — так сразу понятно, доехало ли обновление до телефона. */
-const APP_VERSION = '17 · точность нажатий';
+const APP_VERSION = '18 · восстановление данных';
 
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const MONTHS_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
@@ -1753,8 +1758,8 @@ $('#typeSeg').onclick = (e) => {
   }
   renderEntry();
 };
-$('.sheet').forEach((s) => s.addEventListener('click', (e) => {
-  if (e.target === s && !tooSoon(s)) s.hidden = true;
+$$('.sheet').forEach((s) => s.addEventListener('click', (e) => {
+  if (e.target === s && !notArmed(s)) s.hidden = true;
 }));
 
 const shiftMonth = (key, delta) => {
@@ -1820,6 +1825,7 @@ $('#goalMenu').onclick = () => {
 };
 $('#exportCsv').onclick = () => { download(`koshelek-${todayISO()}.csv`, toCsv(), 'text/csv;charset=utf-8'); toast('Файл выгружен'); };
 $('#makeBackup').onclick = doBackup;
+$('#snapshotsRow').onclick = openSnapshots;
 $('#storageInfo').onclick = showStorageInfo;
 $('#backupRemind').onclick = () => {
   Store.state.settings.backupRemind = Store.state.settings.backupRemind === false;
@@ -1831,7 +1837,9 @@ $('#importCsv').onclick = () => askFile('csv');
 $('#importJson').onclick = () => askFile('json');
 $('#importPlanner').onclick = () => askFile('planner');
 $('#wipe').onclick = () => {
-  if (!confirm('Стереть все счета и операции? Это необратимо.')) return;
+  if (!confirm('Стереть все счета и операции?')) return;
+  const word = prompt('Это необратимо. Чтобы подтвердить, наберите слово: СТЕРЕТЬ');
+  if (!word || word.trim().toUpperCase() !== 'СТЕРЕТЬ') return toast('Отменено, данные на месте');
   Store.reset(); render(); toast('Данные очищены');
 };
 $('#filePicker').onchange = (e) => {
@@ -1895,6 +1903,17 @@ const NL = String.fromCharCode(10);
 
 /* Если запись в основное хранилище сорвалась — говорим об этом громко:
    молча потерянная операция хуже неудобного окна. */
+document.addEventListener('store:blockedwipe', (e) => {
+  if (ui.wipeWarned) return;
+  ui.wipeWarned = true;
+  alert([
+    'Приложение попыталось сохранить пустые данные поверх ' + e.detail + ' операций.',
+    '',
+    'Запись остановлена, ваши операции целы. Закройте и откройте приложение,',
+    'а если операции не появятся — «Ещё» → «Восстановить из снимка».',
+  ].join(String.fromCharCode(10)));
+});
+
 document.addEventListener('store:savefailed', (e) => {
   if (ui.saveWarned) return;
   ui.saveWarned = true;
@@ -1911,31 +1930,65 @@ document.addEventListener('store:savefailed', (e) => {
 /* При запуске проверяем, не потерялось ли основное хранилище. */
 async function checkStorageHealth() {
   requestPersistentStorage();
-  const empty = !Store.state.transactions.length && !Store.state.accounts.some((a) => a.initial);
+  // Пусто — это когда нет операций. Начальные остатки счетов тут не считаются:
+  // из-за них потеря операций раньше оставалась незамеченной.
+  const empty = !Store.state.transactions.length;
   if (!empty && !Store.loadBroken) return;
 
-  const snap = await Snapshots.newest();
-  if (!snap || !snap.count) return;
+  const snap = await Snapshots.bestNonEmpty();
+  if (!snap) return;
 
   const when = new Date(snap.at).toLocaleString('ru-RU');
-  const what = Store.loadBroken ? 'Данные приложения повреждены' : 'Данные приложения пусты';
+  const what = Store.loadBroken ? 'Данные приложения повреждены' : 'Операции пропали';
   const ask = [
-    what + ', но есть сохранённый снимок:',
+    what + ', но сохранился автоматический снимок:',
     '',
     when + ', операций: ' + snap.count,
     '',
     'Восстановить из него?',
   ].join(NL);
-  if (confirm(ask)) {
-    try {
-      Store.replaceAll(JSON.parse(snap.json));
-      render();
-      toast('Восстановлено ' + Store.state.transactions.length + ' операций');
-    } catch (err) {
-      alert('Снимок прочитать не удалось: ' + err.message);
-    }
+  if (confirm(ask)) restoreSnapshot(snap);
+}
+
+function restoreSnapshot(snap) {
+  try {
+    Store.replaceAll(JSON.parse(snap.json));
+    render();
+    toast('Восстановлено ' + Store.state.transactions.length + ' операций');
+    return true;
+  } catch (err) {
+    alert('Снимок прочитать не удалось: ' + err.message);
+    return false;
   }
 }
+
+/* Ручное восстановление: показываем все снимки, выбор за человеком. */
+async function openSnapshots() {
+  const snaps = await Snapshots.list();
+  if (!snaps.length) {
+    return alert([
+      'Автоматических снимков нет.',
+      '',
+      'Восстановить данные можно из файла-копии: «Ещё» → «Восстановить из копии»,',
+      'либо заново загрузить историю за 2026 из встроенной копии таблицы.',
+    ].join(NL));
+  }
+  const items = snaps.map((s, i) => ({
+    label: new Date(s.at).toLocaleString('ru-RU'),
+    icon: s.count ? '📦' : '␀',
+    note: s.count ? s.count + ' операций' : 'пустой',
+    i,
+  }));
+  openPicker('Автоматические снимки', items, (it) => {
+    const snap = snaps[it.i];
+    if (!snap.count) return toast(NL_EMPTY);
+    if (confirm('Заменить текущие данные снимком от ' + new Date(snap.at).toLocaleString('ru-RU') + '?' + NL + NL + 'Операций в снимке: ' + snap.count)) {
+      restoreSnapshot(snap);
+    }
+  });
+}
+const NL_EMPTY = 'Этот снимок пустой — выберите другой';
+
 
 /* Камера и микрофон не должны продолжать работать, когда приложение свернули:
    иначе телефон греется, а приложение начинает подтормаживать. */
@@ -1946,9 +1999,13 @@ document.addEventListener('visibilitychange', () => {
 });
 
 /* ---------- Старт ---------- */
-Store.load();
-applyTheme();
-go('home');
+try {
+  applyTheme();
+  go('home');
+} catch (e) {
+  console.error('Ошибка запуска', e);
+  alert('Приложение запустилось с ошибкой: ' + e.message + String.fromCharCode(10) + String.fromCharCode(10) + 'Данные не тронуты. Сообщите об этом.');
+}
 checkStorageHealth();
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {

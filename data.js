@@ -79,6 +79,20 @@ const Store = {
   saveFailed: false,
 
   save() {
+    // Предохранитель: не позволяем пустому состоянию затереть непустое.
+    // Именно так терялись данные, когда скрипт падал до Store.load() и
+    // приложение стартовало с чистого листа.
+    if (!this.state.transactions.length && !this.allowEmpty) {
+      try {
+        const raw = localStorage.getItem(STORE_KEY);
+        const had = raw ? (JSON.parse(raw).transactions || []).length : 0;
+        if (had > 0) {
+          console.warn('Сохранение пустых данных поверх ' + had + ' операций остановлено');
+          document.dispatchEvent(new CustomEvent('store:blockedwipe', { detail: had }));
+          return;
+        }
+      } catch (e) { /* прочитать не смогли — сохраняем как обычно */ }
+    }
     const json = JSON.stringify(this.state);
     try {
       localStorage.setItem(STORE_KEY, json);
@@ -99,12 +113,16 @@ const Store = {
 
   replaceAll(next) {
     this.state = { ...emptyState(), ...next };
+    this.allowEmpty = true;
     this.save();
+    this.allowEmpty = false;
   },
 
   reset() {
     this.state = emptyState();
+    this.allowEmpty = true;
     this.save();
+    this.allowEmpty = false;
   },
 };
 
