@@ -178,6 +178,10 @@ body.listening .mic { background: var(--red); animation: pulse 1.1s infinite; }
 .cat-sub { font-size: 12.5px; color: var(--muted); }
 .mini-track { height: 5px; border-radius: 3px; background: var(--card-2); margin-top: 5px; overflow: hidden; }
 .mini-fill { height: 100%; }
+.category-summary { display: flex; flex-direction: column; gap: 3px; padding: 14px 16px 16px; }
+.category-summary b { font-size: 24px; }
+.category-summary span { color: var(--muted); font-size: 13px; }
+.category-summary + .day-head { margin-top: 0; }
 
 .year-chart { display: flex; align-items: flex-end; gap: 4px; height: 130px; padding: 4px 12px 14px; }
 .yc { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; height: 100%; justify-content: flex-end; }

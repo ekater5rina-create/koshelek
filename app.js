@@ -9,7 +9,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 /* Версию видно в «Ещё» — так сразу понятно, доехало ли обновление до телефона. */
-const APP_VERSION = '19 · калькулятор сумм';
+const APP_VERSION = '20 · операции по категориям';
 
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const MONTHS_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
@@ -737,6 +737,40 @@ function renderReport() {
       </div><div class="yc-l">${MONTHS_SHORT[i]}</div></div>`
     )
     .join('');
+}
+
+/* В отчёте итог категории раскрывается до исходных операций.
+   Переводы на сберегательный счёт и обратно включаем так же, как в byCategory. */
+function reportCategoryTransactions(category) {
+  return txOfMonth(ui.repMonth).filter((t) => {
+    if (t.type === ui.repKind) return t.category === category;
+    const f = savingsFlow(t);
+    return (ui.repKind === 'expense' && category === SAVINGS_IN && f > 0)
+      || (ui.repKind === 'income' && category === SAVINGS_OUT && f < 0);
+  });
+}
+
+function openReportCategory(category) {
+  const list = reportCategoryTransactions(category);
+  const meta = catMeta(ui.repKind, category);
+  const d = parseKey(ui.repMonth);
+  const total = list.reduce((sum, t) => sum + t.amount, 0);
+  $('#categoryTitle').textContent = `${meta.icon} ${category}`;
+
+  const groups = new Map();
+  for (const t of list) (groups.get(t.date) || groups.set(t.date, []).get(t.date)).push(t);
+  const rows = [...groups.entries()].map(([date, items]) => {
+    const dt = new Date(date + 'T00:00:00');
+    const dayTotal = items.reduce((sum, t) => sum + t.amount, 0);
+    return `<div class="day-head"><span>${dt.getDate()} ${MONTHS[dt.getMonth()].toLowerCase()}, ${DAYS[dt.getDay()]}</span><span>${money(dayTotal)}</span></div>
+      <div class="tx-group">${items.map(txRow).join('')}</div>`;
+  }).join('');
+
+  $('#categoryBody').innerHTML = `<div class="category-summary">
+      <b>${money(total)}</b>
+      <span>${MONTHS[d.getMonth()].toLowerCase()} ${d.getFullYear()} · ${list.length} ${list.length === 1 ? 'операция' : 'операций'}</span>
+    </div>${rows || '<div class="empty">Операций нет</div>'}`;
+  showSheet('#categorySheet');
 }
 
 function renderMore() {
@@ -1716,9 +1750,14 @@ document.addEventListener('click', (e) => {
   const tx = e.target.closest('[data-tx]');
   if (tx) {
     const t = Store.state.transactions.find((x) => x.id === tx.dataset.tx);
-    if (t) openTxDetail(t);
+    if (t) {
+      $('#categorySheet').hidden = true;
+      openTxDetail(t);
+    }
     return;
   }
+  const category = e.target.closest('[data-cat]');
+  if (category) return openReportCategory(category.dataset.cat);
   const goal = e.target.closest('[data-goal]');
   if (goal) return openGoal(goal.dataset.goal);
 
@@ -1854,6 +1893,7 @@ $('#checkUpdate').onclick = async () => {
 $('#receiptCamera').onchange = (e) => { handleReceiptImage(e.target.files[0]); e.target.value = ''; };
 $('#receiptGallery').onchange = (e) => { handleReceiptImage(e.target.files[0]); e.target.value = ''; };
 $('#txClose').onclick = () => ($('#txSheet').hidden = true);
+$('#categoryClose').onclick = () => ($('#categorySheet').hidden = true);
 $('#confirmYes').onclick = confirmSave;
 $('#confirmCancel').onclick = () => { $('#confirmSheet').hidden = true; ui.confirm = null; };
 $('#confirmNo').onclick = () => {
