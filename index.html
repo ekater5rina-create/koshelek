@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="Кошелёк">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="styles.css?v=19">
+<link rel="stylesheet" href="styles.css?v=21">
 <title>Кошелёк</title>
 </head>
 <body>
@@ -339,6 +339,40 @@
   </div>
 </div>
 
+<!-- ЦЕЛЬ: СОЗДАНИЕ И РЕДАКТИРОВАНИЕ -->
+<div class="sheet" id="goalFormSheet" hidden>
+  <div class="sheet-card">
+    <div class="sheet-head">
+      <button class="sheet-x" id="goalFormCancel">Отмена</button>
+      <div class="sheet-title" id="goalFormTitle">Новая цель</div>
+      <button class="sheet-ok" id="goalFormSave">Сохранить</button>
+    </div>
+    <div class="form-body">
+      <label class="form-field"><span>Название</span><input id="goalFormName" type="text" placeholder="Например, отпуск" autocomplete="off"></label>
+      <label class="form-field"><span>Сумма цели, ₽</span><input id="goalFormTarget" type="number" inputmode="decimal" min="1" placeholder="300000"></label>
+      <label class="form-field"><span>Уже накоплено, ₽</span><input id="goalFormInitial" type="number" inputmode="decimal" min="0" placeholder="0"></label>
+      <label class="form-field"><span>Срок</span><input id="goalFormDeadline" type="month"></label>
+      <button class="form-delete" id="goalFormDelete" hidden>Удалить цель</button>
+    </div>
+  </div>
+</div>
+
+<!-- ЦЕЛЬ: ПОПОЛНЕНИЕ -->
+<div class="sheet" id="goalTopUpSheet" hidden>
+  <div class="sheet-card">
+    <div class="sheet-head">
+      <button class="sheet-x" id="goalTopUpCancel">Отмена</button>
+      <div class="sheet-title" id="goalTopUpTitle">Добавить в цель</div>
+      <button class="sheet-ok" id="goalTopUpSave">Добавить</button>
+    </div>
+    <div class="form-body">
+      <label class="form-field"><span>Сумма, ₽</span><input id="goalTopUpAmount" type="number" inputmode="decimal" min="1"></label>
+      <label class="form-field"><span>С какого счёта</span><select id="goalTopUpAccount"></select></label>
+      <div class="form-hint">Деньги будут переведены на сберегательный счёт и зачтены в прогресс цели.</div>
+    </div>
+  </div>
+</div>
+
 <!-- УНИВЕРСАЛЬНЫЙ ВЫБОР -->
 <div class="sheet" id="pickerSheet" hidden>
   <div class="sheet-card">
@@ -357,15 +391,15 @@
 <input type="file" id="receiptGallery" accept="image/*" hidden>
 <div id="toast" class="toast" hidden></div>
 
-<script src="storage.js?v=20"></script>
-<script src="data.js?v=20"></script>
-<script src="history.js?v=20"></script>
-<script src="goals.js?v=20"></script>
-<script src="plans.js?v=20"></script>
-<script src="planner.js?v=20"></script>
-<script src="vendor-jsqr.js?v=20"></script>
-<script src="receipt.js?v=20"></script>
-<script src="nlp.js?v=20"></script>
-<script src="app.js?v=20"></script>
+<script src="storage.js?v=21"></script>
+<script src="data.js?v=21"></script>
+<script src="history.js?v=21"></script>
+<script src="goals.js?v=21"></script>
+<script src="plans.js?v=21"></script>
+<script src="planner.js?v=21"></script>
+<script src="vendor-jsqr.js?v=21"></script>
+<script src="receipt.js?v=21"></script>
+<script src="nlp.js?v=21"></script>
+<script src="app.js?v=21"></script>
 </body>
 </html>

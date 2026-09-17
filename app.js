@@ -9,7 +9,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 /* Версию видно в «Ещё» — так сразу понятно, доехало ли обновление до телефона. */
-const APP_VERSION = '20 · операции по категориям';
+const APP_VERSION = '21 · пополнение целей';
 
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const MONTHS_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
@@ -430,6 +430,10 @@ function openGoal(id) {
   let html = `<div class="goal" style="border:0">
       <div class="goal-track"><div class="goal-fill ${p.done ? 'ok' : p.onTrack ? '' : 'risk'}" style="width:${pct}%"></div></div>
       <div class="goal-line"><b>${money(p.saved)}</b> из ${money(g.target)} · осталось ${money(p.need)}</div>
+    </div>
+    <div class="g-actions goal-actions">
+      <button class="g-btn" id="goalTopUp">Добавить сумму</button>
+      <button class="g-btn ghost" id="goalEdit">Изменить</button>
     </div>`;
 
   // Вердикт
@@ -482,11 +486,6 @@ function openGoal(id) {
     }
   }
 
-  html += `<div class="g-actions">
-      <button class="g-btn" id="goalTopUp">Отложить</button>
-      <button class="g-btn ghost" id="goalEdit">Изменить</button>
-    </div>`;
-
   $('#goalBody').innerHTML = html;
   showSheet('#goalSheet');
   $('#goalTopUp').onclick = () => topUpGoal(g);
@@ -496,19 +495,32 @@ function openGoal(id) {
 function topUpGoal(g) {
   const p = Advice.plan(g);
   const def = p.flat || Math.max(1000, Math.round(p.need / 10));
-  const v = prompt(`Сколько отложить на «${g.name}»?`, String(def));
-  if (v === null) return;
-  const amount = parseFloat(String(v).replace(/\s/g, '').replace(',', '.'));
-  if (!amount || amount <= 0) return toast('Нужна сумма больше нуля');
+  const accs = spendAccounts();
+  if (!accs.length) return toast('Сначала добавьте обычный счёт');
+  ui.goalId = g.id;
+  $('#goalTopUpTitle').textContent = `Добавить в «${g.name}»`;
+  $('#goalTopUpAmount').value = String(Math.round(def));
+  $('#goalTopUpAccount').innerHTML = accs.map((a) =>
+    `<option value="${a.id}">${a.icon} ${esc(a.name)} · ${money(balanceOf(a.id))}</option>`
+  ).join('');
+  $('#goalSheet').hidden = true;
+  showSheet('#goalTopUpSheet');
+  setTimeout(() => $('#goalTopUpAmount').select(), 50);
+}
 
-  const accs = spendAccounts().map((a) => ({ label: a.name, icon: a.icon, note: money(balanceOf(a.id)), id: a.id }));
-  openPicker('С какого счёта отложить', accs, (it) => {
-    Store.state.transactions.push(saveToSavings(amount, it.id, `Цель: ${g.name}`, { goalId: g.id }));
-    Store.save();
-    $('#goalSheet').hidden = true;
-    render();
-    toast(`Отложено ${money(amount)} на «${g.name}»`);
-  });
+function saveGoalTopUp() {
+  const g = Store.state.goals.find((x) => x.id === ui.goalId);
+  if (!g) return;
+  const amount = parseFloat(String($('#goalTopUpAmount').value).replace(/\s/g, '').replace(',', '.'));
+  const fromId = $('#goalTopUpAccount').value;
+  if (!amount || amount <= 0) return toast('Введите сумму больше нуля');
+  if (!accountById(fromId)) return toast('Выберите счёт');
+  Store.state.transactions.push(saveToSavings(amount, fromId, `Цель: ${g.name}`, { goalId: g.id }));
+  Store.save();
+  $('#goalTopUpSheet').hidden = true;
+  render();
+  openGoal(g.id);
+  toast(`Добавлено ${money(amount)} в «${g.name}»`);
 }
 
 /* Отложить деньги: если есть сберегательный счёт — это перевод на него,
@@ -524,52 +536,66 @@ function saveToSavings(amount, fromId, note, extra) {
 }
 
 function editGoal(g) {
-  openPicker(`${g.icon} ${g.name}`, [
-    { label: 'Переименовать', icon: '✏️', act: 'name' },
-    { label: 'Изменить сумму', icon: '💰', act: 'target', note: money(g.target) },
-    { label: 'Изменить срок', icon: '📅', act: 'deadline', note: g.deadline ? goalMonthName(g.deadline) : 'не задан' },
-    { label: 'Учесть уже накопленное', icon: '🐖', act: 'initial', note: money(g.initial || 0) },
-    { label: 'Удалить цель', icon: '🗑️', act: 'delete' },
-  ], (it) => {
-    if (it.act === 'name') { const v = prompt('Название цели', g.name); if (v) g.name = v.trim(); }
-    else if (it.act === 'target') { const v = prompt('Сумма цели, ₽', String(g.target)); const n = parseFloat(String(v).replace(/\s/g, '').replace(',', '.')); if (n > 0) g.target = n; }
-    else if (it.act === 'deadline') {
-      const v = prompt('Срок в формате ГГГГ-ММ (пусто — без срока)', g.deadline || '');
-      if (v === null) return;
-      g.deadline = /^\d{4}-\d{2}$/.test(v.trim()) ? v.trim() : '';
-    } else if (it.act === 'initial') {
-      const v = prompt('Сколько уже накоплено на эту цель, ₽', String(g.initial || 0));
-      const n = parseFloat(String(v).replace(/\s/g, '').replace(',', '.'));
-      if (!isNaN(n)) g.initial = n;
-    } else if (it.act === 'delete') {
-      if (!confirm(`Удалить цель «${g.name}»? Отложенные операции останутся.`)) return;
-      Store.state.goals = Store.state.goals.filter((x) => x.id !== g.id);
-      Store.save();
-      $('#goalSheet').hidden = true;
-      render();
-      return;
-    }
-    Store.save();
-    openGoal(g.id);
-    render();
-  });
+  openGoalForm(g);
 }
 
 function addGoal() {
-  const name = prompt('На что копим? Например: Обучение');
-  if (!name) return;
-  const t = prompt('Сколько нужно собрать, ₽', '300000');
-  const target = parseFloat(String(t).replace(/\s/g, '').replace(',', '.'));
-  if (!target || target <= 0) return toast('Нужна сумма больше нуля');
-  const d = prompt('К какому месяцу? Формат ГГГГ-ММ, можно оставить пустым', addMonths(monthKey(new Date()), 12));
-  const icons = ['🎓', '🏖️', '🚗', '🏠', '💍', '🎁'];
-  Store.state.goals.push({
-    id: uid('goal'), name: name.trim(), icon: icons[Store.state.goals.length % icons.length],
-    target, initial: 0, deadline: d && /^\d{4}-\d{2}$/.test(d.trim()) ? d.trim() : '', createdAt: Date.now(),
-  });
+  openGoalForm(null);
+}
+
+function openGoalForm(g) {
+  ui.goalEditId = g?.id || null;
+  $('#goalFormTitle').textContent = g ? `Изменить «${g.name}»` : 'Новая цель';
+  $('#goalFormName').value = g?.name || '';
+  $('#goalFormTarget').value = g?.target || '';
+  $('#goalFormInitial').value = g?.initial || 0;
+  $('#goalFormDeadline').value = g?.deadline || addMonths(monthKey(new Date()), 12);
+  $('#goalFormDelete').hidden = !g;
+  $('#goalFormDelete').dataset.confirm = '0';
+  $('#goalFormDelete').textContent = 'Удалить цель';
+  $('#goalSheet').hidden = true;
+  showSheet('#goalFormSheet');
+  setTimeout(() => $('#goalFormName').focus(), 50);
+}
+
+function saveGoalForm() {
+  const name = $('#goalFormName').value.trim();
+  const target = parseFloat(String($('#goalFormTarget').value).replace(/\s/g, '').replace(',', '.'));
+  const initial = parseFloat(String($('#goalFormInitial').value || 0).replace(/\s/g, '').replace(',', '.'));
+  const deadline = $('#goalFormDeadline').value;
+  if (!name) return toast('Введите название цели');
+  if (!target || target <= 0) return toast('Введите сумму цели больше нуля');
+  if (isNaN(initial) || initial < 0) return toast('Накопленная сумма не может быть отрицательной');
+  const existing = Store.state.goals.find((x) => x.id === ui.goalEditId);
+  if (existing) {
+    Object.assign(existing, { name, target, initial, deadline });
+  } else {
+    const icons = ['🎓', '🏖️', '🚗', '🏠', '💍', '🎁'];
+    Store.state.goals.push({
+      id: uid('goal'), name, icon: icons[Store.state.goals.length % icons.length],
+      target, initial, deadline, createdAt: Date.now(),
+    });
+  }
   Store.save();
+  const saved = existing || Store.state.goals.at(-1);
+  $('#goalFormSheet').hidden = true;
   render();
-  openGoal(Store.state.goals.at(-1).id);
+  openGoal(saved.id);
+}
+
+function deleteGoalFromForm() {
+  const g = Store.state.goals.find((x) => x.id === ui.goalEditId);
+  if (!g) return;
+  const btn = $('#goalFormDelete');
+  if (btn.dataset.confirm !== '1') {
+    btn.dataset.confirm = '1';
+    btn.textContent = 'Нажмите ещё раз, чтобы удалить';
+    return toast('Отложенные операции останутся');
+  }
+  Store.state.goals = Store.state.goals.filter((x) => x.id !== g.id);
+  Store.save();
+  $('#goalFormSheet').hidden = true;
+  render();
 }
 
 function renderHome() {
@@ -1925,6 +1951,11 @@ $('#goalMenu').onclick = () => {
   const g = Store.state.goals.find((x) => x.id === ui.goalId);
   if (g) editGoal(g);
 };
+$('#goalFormCancel').onclick = () => ($('#goalFormSheet').hidden = true);
+$('#goalFormSave').onclick = saveGoalForm;
+$('#goalFormDelete').onclick = deleteGoalFromForm;
+$('#goalTopUpCancel').onclick = () => { $('#goalTopUpSheet').hidden = true; if (ui.goalId) openGoal(ui.goalId); };
+$('#goalTopUpSave').onclick = saveGoalTopUp;
 $('#exportCsv').onclick = () => { download(`koshelek-${todayISO()}.csv`, toCsv(), 'text/csv;charset=utf-8'); toast('Файл выгружен'); };
 $('#makeBackup').onclick = doBackup;
 $('#snapshotsRow').onclick = openSnapshots;
