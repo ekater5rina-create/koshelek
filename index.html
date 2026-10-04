@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="Кошелёк">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="styles.css?v=23">
+<link rel="stylesheet" href="styles.css?v=24">
 <title>Кошелёк</title>
 </head>
 <body>
@@ -360,7 +360,8 @@
       <label class="form-field"><span>Счёт</span><select id="plannedFormAccount"></select></label>
       <label class="form-field"><span>Категория</span><select id="plannedFormCategory"></select></label>
       <label class="form-field"><span>Комментарий</span><input id="plannedFormNote" type="text" placeholder="Например, страховка" autocomplete="off"></label>
-      <div class="form-hint">На этом шаге запись попадёт только в план. Фактический баланс счёта не изменится.</div>
+      <button class="form-complete" id="plannedFormComplete" hidden>Оплачено сегодня</button>
+      <div class="form-hint">«Сохранить» изменяет только план. Кнопка выполнения создаёт фактическую операцию сегодняшней датой и изменяет баланс счёта.</div>
       <button class="form-delete" id="plannedFormDelete" hidden>Удалить из календаря</button>
     </div>
   </div>
@@ -430,15 +431,15 @@
 <input type="file" id="receiptGallery" accept="image/*" hidden>
 <div id="toast" class="toast" hidden></div>
 
-<script src="storage.js?v=23"></script>
-<script src="data.js?v=23"></script>
-<script src="history.js?v=23"></script>
-<script src="goals.js?v=23"></script>
-<script src="plans.js?v=23"></script>
-<script src="planner.js?v=23"></script>
-<script src="vendor-jsqr.js?v=23"></script>
-<script src="receipt.js?v=23"></script>
-<script src="nlp.js?v=23"></script>
-<script src="app.js?v=23"></script>
+<script src="storage.js?v=24"></script>
+<script src="data.js?v=24"></script>
+<script src="history.js?v=24"></script>
+<script src="goals.js?v=24"></script>
+<script src="plans.js?v=24"></script>
+<script src="planner.js?v=24"></script>
+<script src="vendor-jsqr.js?v=24"></script>
+<script src="receipt.js?v=24"></script>
+<script src="nlp.js?v=24"></script>
+<script src="app.js?v=24"></script>
 </body>
 </html>
