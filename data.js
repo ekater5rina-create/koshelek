@@ -45,6 +45,7 @@ const emptyState = () => ({
   version: 1,
   accounts: DEFAULT_ACCOUNTS.map((a) => ({ ...a })),
   transactions: [],
+  planned: [],          // { id, type, amount, date, category, accountId, note, createdAt }
   goals: [],            // { id, name, icon, target, initial, deadline: "2027-06" }
   recurring: [],        // { id, cat, sub, amount, accountId, active }
   budgets: {},          // { "2026-08": { "Жизнедеятельность": 40000 } }

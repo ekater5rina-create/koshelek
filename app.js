@@ -9,7 +9,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 /* Версию видно в «Ещё» — так сразу понятно, доехало ли обновление до телефона. */
-const APP_VERSION = '21 · пополнение целей';
+const APP_VERSION = '22 · платёжный календарь';
 
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const MONTHS_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
@@ -28,6 +28,7 @@ const ui = {
   repKind: 'expense',
   search: '',
   draft: null,
+  plannedId: null,
 };
 
 /* ---------- Помощники по данным ---------- */
@@ -144,10 +145,128 @@ function render() {
   if (ui.screen === 'ops') renderOps();
   if (ui.screen === 'report') renderReport();
   if (ui.screen === 'more') renderMore();
+  if (ui.screen === 'calendar') renderCalendar();
   if (ui.screen === 'budgets') renderBudgets();
   if (ui.screen === 'goals') renderGoals();
   if (ui.screen === 'recurring') renderRecurring();
   if (ui.screen === 'fund') renderFund();
+}
+
+/* ---------- Платёжный календарь ---------- */
+const plannedItems = () => (Store.state.planned || [])
+  .slice()
+  .sort((a, b) => (a.date === b.date ? (a.createdAt || 0) - (b.createdAt || 0) : a.date < b.date ? -1 : 1));
+
+function renderCalendar() {
+  const items = plannedItems();
+  const income = items.filter((p) => p.type === 'income').reduce((s, p) => s + p.amount, 0);
+  const expense = items.filter((p) => p.type === 'expense').reduce((s, p) => s + p.amount, 0);
+  $('#calendarSummary').textContent = items.length
+    ? `Доходы ${money(income)} · расходы ${money(expense)}`
+    : 'Добавьте будущий доход или расход';
+
+  if (!items.length) {
+    $('#calendarBody').innerHTML = '<div class="empty">Плановых операций пока нет.<br>Нажмите «+», чтобы добавить первую.</div>';
+    return;
+  }
+
+  const groups = new Map();
+  for (const p of items) (groups.get(p.date) || groups.set(p.date, []).get(p.date)).push(p);
+  $('#calendarBody').innerHTML = [...groups.entries()].map(([date, rows]) => {
+    const dt = new Date(date + 'T00:00:00');
+    const dateLabel = `${dt.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}, ${DAYS[dt.getDay()]}`;
+    const overdue = date < todayISO() ? ' · просрочено' : '';
+    const dayNet = rows.reduce((s, p) => s + (p.type === 'income' ? p.amount : -p.amount), 0);
+    return `<div class="day-head"><span>${dateLabel}${overdue}</span><span>${dayNet >= 0 ? '+' : ''}${money(dayNet)}</span></div>
+      <div class="tx-group">${rows.map(plannedRow).join('')}</div>`;
+  }).join('');
+}
+
+function plannedRow(p) {
+  const meta = catMeta(p.type, p.category);
+  const acc = accountById(p.accountId);
+  const signed = p.type === 'income' ? p.amount : -p.amount;
+  return `<button class="tx" data-planned="${esc(p.id)}">
+    <span class="ic" style="background:${meta.color}22">${meta.icon}</span>
+    <div><div class="tx-t">${esc(p.note || p.category)}</div><div class="tx-s">${esc(p.category)} · ${esc(acc ? acc.icon + ' ' + acc.name : 'Счёт не найден')}</div></div>
+    <span class="tx-a ${signed > 0 ? 'pos' : ''}">${signed > 0 ? '+' : ''}${money(signed)}</span>
+  </button>`;
+}
+
+function tomorrowISO() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function renderPlannedCategoryOptions(selected) {
+  const type = $('#plannedFormType').value;
+  const list = catList(type);
+  $('#plannedFormCategory').innerHTML = list
+    .map((c) => `<option value="${esc(c.name)}"${c.name === selected ? ' selected' : ''}>${c.icon} ${esc(c.name)}</option>`)
+    .join('');
+}
+
+function openPlannedForm(item = null) {
+  ui.plannedId = item?.id || null;
+  $('#plannedFormTitle').textContent = item ? 'Изменить план' : 'Новый платёж';
+  $('#plannedFormType').value = item?.type || 'expense';
+  $('#plannedFormAmount').value = item?.amount || '';
+  $('#plannedFormDate').value = item?.date || tomorrowISO();
+  $('#plannedFormAccount').innerHTML = accounts().map((a) =>
+    `<option value="${esc(a.id)}">${a.icon} ${esc(a.name)}</option>`
+  ).join('');
+  $('#plannedFormAccount').value = item?.accountId || Store.state.settings.lastAccountId || accounts()[0]?.id || '';
+  renderPlannedCategoryOptions(item?.category);
+  $('#plannedFormNote').value = item?.note || '';
+  const del = $('#plannedFormDelete');
+  del.hidden = !item;
+  del.dataset.confirm = '0';
+  del.textContent = 'Удалить из календаря';
+  showSheet('#plannedFormSheet');
+  setTimeout(() => $('#plannedFormAmount').focus(), 50);
+}
+
+function savePlannedForm() {
+  const amount = parseFloat($('#plannedFormAmount').value.replace(',', '.'));
+  const date = $('#plannedFormDate').value;
+  const accountId = $('#plannedFormAccount').value;
+  const category = $('#plannedFormCategory').value;
+  if (!amount || amount <= 0) return toast('Укажите сумму больше нуля');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return toast('Укажите дату');
+  if (!accountId) return toast('Выберите счёт');
+  if (!category) return toast('Выберите категорию');
+
+  Store.state.planned = Store.state.planned || [];
+  const values = {
+    type: $('#plannedFormType').value,
+    amount: Math.round(amount * 100) / 100,
+    date,
+    accountId,
+    category,
+    note: $('#plannedFormNote').value.trim(),
+  };
+  const current = Store.state.planned.find((p) => p.id === ui.plannedId);
+  if (current) Object.assign(current, values);
+  else Store.state.planned.push({ id: uid('plan'), ...values, createdAt: Date.now() });
+  Store.save();
+  $('#plannedFormSheet').hidden = true;
+  render();
+  toast(current ? 'План обновлён' : 'Добавлено в календарь');
+}
+
+function deletePlannedFromForm() {
+  const btn = $('#plannedFormDelete');
+  if (btn.dataset.confirm !== '1') {
+    btn.dataset.confirm = '1';
+    btn.textContent = 'Нажмите ещё раз, чтобы удалить';
+    return;
+  }
+  Store.state.planned = (Store.state.planned || []).filter((p) => p.id !== ui.plannedId);
+  Store.save();
+  $('#plannedFormSheet').hidden = true;
+  render();
+  toast('Удалено из календаря');
 }
 
 /* ---------- Регулярные платежи ---------- */
@@ -817,6 +936,8 @@ function renderMore() {
 
   const pending = Plans.pending();
   $('#recBadge').textContent = pending.length ? `${pending.length} не отмечено` : '';
+  const plannedCount = (Store.state.planned || []).filter((p) => p.date >= todayISO()).length;
+  $('#calendarBadge').textContent = plannedCount ? `${plannedCount} впереди` : '';
   const f = Plans.fund();
   $('#fundBadge').textContent = f ? `${money(f.perMonth)}/мес` : '';
 }
@@ -1782,6 +1903,12 @@ document.addEventListener('click', (e) => {
     }
     return;
   }
+  const planned = e.target.closest('[data-planned]');
+  if (planned) {
+    const item = (Store.state.planned || []).find((p) => p.id === planned.dataset.planned);
+    if (item) openPlannedForm(item);
+    return;
+  }
   const category = e.target.closest('[data-cat]');
   if (category) return openReportCategory(category.dataset.cat);
   const goal = e.target.closest('[data-goal]');
@@ -1904,6 +2031,11 @@ $('#repSeg').onclick = (e) => { const b = e.target.closest('[data-kind]'); if (b
 $('#addAccount').onclick = addAccount;
 $('#loadHistory').onclick = loadHistoryFromSheet;
 $('#addGoal').onclick = addGoal;
+$('#addPlanned').onclick = () => openPlannedForm();
+$('#plannedFormCancel').onclick = () => ($('#plannedFormSheet').hidden = true);
+$('#plannedFormSave').onclick = savePlannedForm;
+$('#plannedFormDelete').onclick = deletePlannedFromForm;
+$('#plannedFormType').onchange = () => renderPlannedCategoryOptions();
 $('#camHome').onclick = openReceiptMenu;
 $('#scanClose').onclick = closeScan;
 $('#scanShot').onclick = shotFromScanner;

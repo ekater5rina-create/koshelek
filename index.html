@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="Кошелёк">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="styles.css?v=21">
+<link rel="stylesheet" href="styles.css?v=22">
 <title>Кошелёк</title>
 </head>
 <body>
@@ -125,6 +125,7 @@
       <div class="card">
         <div class="card-head"><span>Планы</span></div>
         <div class="rows">
+          <button class="row" data-goto="calendar"><span class="row-ic">🗓️</span><span>Платёжный календарь</span><span class="row-val" id="calendarBadge"></span><span class="row-go">›</span></button>
           <button class="row" data-goto="goals"><span class="row-ic">🏁</span><span>Цели накоплений</span><span class="row-go">›</span></button>
           <button class="row" data-goto="recurring"><span class="row-ic">🔁</span><span>Регулярные платежи</span><span class="row-val" id="recBadge"></span><span class="row-go">›</span></button>
           <button class="row" data-goto="fund"><span class="row-ic">🌊</span><span>Фонд нерегулярных трат</span><span class="row-val" id="fundBadge"></span><span class="row-go">›</span></button>
@@ -173,6 +174,19 @@
       </div>
       <div class="pad"></div>
     </div>
+  </section>
+
+  <!-- ПЛАТЁЖНЫЙ КАЛЕНДАРЬ -->
+  <section class="screen" data-screen="calendar" hidden>
+    <header class="hdr small">
+      <div class="month-nav">
+        <button class="chev" data-goto="more" aria-label="Назад">‹</button>
+        <div class="month-name">Платёжный календарь</div>
+        <button class="chev" id="addPlanned" aria-label="Новый платёж">+</button>
+      </div>
+      <div class="hdr-month" id="calendarSummary"></div>
+    </header>
+    <div class="scroll"><div id="calendarBody"></div><div class="pad"></div></div>
   </section>
 
   <!-- ЦЕЛИ -->
@@ -327,6 +341,27 @@
   </div>
 </div>
 
+<!-- ПЛАНОВАЯ ОПЕРАЦИЯ -->
+<div class="sheet" id="plannedFormSheet" hidden>
+  <div class="sheet-card">
+    <div class="sheet-head">
+      <button class="sheet-x" id="plannedFormCancel">Отмена</button>
+      <div class="sheet-title" id="plannedFormTitle">Новый платёж</div>
+      <button class="sheet-ok" id="plannedFormSave">Сохранить</button>
+    </div>
+    <div class="form-body">
+      <label class="form-field"><span>Тип</span><select id="plannedFormType"><option value="expense">Расход</option><option value="income">Доход</option></select></label>
+      <label class="form-field"><span>Сумма, ₽</span><input id="plannedFormAmount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="10000"></label>
+      <label class="form-field"><span>Дата</span><input id="plannedFormDate" type="date"></label>
+      <label class="form-field"><span>Счёт</span><select id="plannedFormAccount"></select></label>
+      <label class="form-field"><span>Категория</span><select id="plannedFormCategory"></select></label>
+      <label class="form-field"><span>Комментарий</span><input id="plannedFormNote" type="text" placeholder="Например, страховка" autocomplete="off"></label>
+      <div class="form-hint">На этом шаге запись попадёт только в план. Фактический баланс счёта не изменится.</div>
+      <button class="form-delete" id="plannedFormDelete" hidden>Удалить из календаря</button>
+    </div>
+  </div>
+</div>
+
 <!-- ЦЕЛЬ: ПОДРОБНО -->
 <div class="sheet" id="goalSheet" hidden>
   <div class="sheet-card">
@@ -391,15 +426,15 @@
 <input type="file" id="receiptGallery" accept="image/*" hidden>
 <div id="toast" class="toast" hidden></div>
 
-<script src="storage.js?v=21"></script>
-<script src="data.js?v=21"></script>
-<script src="history.js?v=21"></script>
-<script src="goals.js?v=21"></script>
-<script src="plans.js?v=21"></script>
-<script src="planner.js?v=21"></script>
-<script src="vendor-jsqr.js?v=21"></script>
-<script src="receipt.js?v=21"></script>
-<script src="nlp.js?v=21"></script>
-<script src="app.js?v=21"></script>
+<script src="storage.js?v=22"></script>
+<script src="data.js?v=22"></script>
+<script src="history.js?v=22"></script>
+<script src="goals.js?v=22"></script>
+<script src="plans.js?v=22"></script>
+<script src="planner.js?v=22"></script>
+<script src="vendor-jsqr.js?v=22"></script>
+<script src="receipt.js?v=22"></script>
+<script src="nlp.js?v=22"></script>
+<script src="app.js?v=22"></script>
 </body>
 </html>
