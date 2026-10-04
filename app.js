@@ -9,7 +9,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 /* Версию видно в «Ещё» — так сразу понятно, доехало ли обновление до телефона. */
-const APP_VERSION = '24 · выполнение плановых платежей';
+const APP_VERSION = '25 · прогноз на 90 дней';
 
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const MONTHS_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
@@ -157,12 +157,59 @@ const plannedItems = () => (Store.state.planned || [])
   .slice()
   .sort((a, b) => (a.date === b.date ? (a.createdAt || 0) - (b.createdAt || 0) : a.date < b.date ? -1 : 1));
 
+function isoAfter(days) {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function calendarForecast(active, days = 90) {
+  const today = todayISO();
+  const endDate = isoAfter(days);
+  const events = new Map();
+  for (const p of active) {
+    if (p.date > endDate || accountById(p.accountId)?.savings) continue;
+    const date = p.date < today ? today : p.date;
+    const signed = p.type === 'income' ? p.amount : -p.amount;
+    events.set(date, (events.get(date) || 0) + signed);
+  }
+
+  const current = totalBalance();
+  let balance = current;
+  let minimum = current;
+  let minimumDate = today;
+  let firstNegative = current < 0 ? today : null;
+  for (const [date, change] of [...events.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    balance += change;
+    if (balance < minimum) { minimum = balance; minimumDate = date; }
+    if (balance < 0 && !firstNegative) firstNegative = date;
+  }
+  return { current, endBalance: balance, minimum, minimumDate, firstNegative, count: events.size, endDate };
+}
+
+function renderCalendarForecast(active) {
+  const f = calendarForecast(active);
+  const risk = f.firstNegative
+    ? `<div class="forecast-alert risk">⚠️ Кассовый разрыв с ${formatDate(f.firstNegative)}. Максимальный дефицит — ${money(Math.abs(Math.min(0, f.minimum)))}.</div>`
+    : `<div class="forecast-alert ok">✓ По внесённым планам кассового разрыва в ближайшие 90 дней нет.</div>`;
+  $('#calendarForecast').innerHTML = `<div class="forecast-card">
+    <div class="forecast-head"><b>Прогноз на 90 дней</b><span>без сбережений</span></div>
+    <div class="forecast-kpis">
+      <div><span>Сейчас</span><b>${money(f.current)}</b></div>
+      <div><span>Через 90 дней</span><b class="${f.endBalance < 0 ? 'neg' : ''}">${money(f.endBalance)}</b></div>
+      <div><span>Минимум</span><b class="${f.minimum < 0 ? 'neg' : ''}">${money(f.minimum)}</b><small>${formatDate(f.minimumDate)}</small></div>
+    </div>
+    ${risk}
+  </div>`;
+}
+
 function renderCalendar() {
   const items = plannedItems();
   const active = items.filter((p) => p.status !== 'done');
   const completed = items.filter((p) => p.status === 'done').sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
   const income = active.filter((p) => p.type === 'income').reduce((s, p) => s + p.amount, 0);
   const expense = active.filter((p) => p.type === 'expense').reduce((s, p) => s + p.amount, 0);
+  renderCalendarForecast(active);
   $('#calendarSummary').textContent = active.length
     ? `Доходы ${money(income)} · расходы ${money(expense)}`
     : 'Будущих платежей нет';

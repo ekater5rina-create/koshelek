@@ -1,5 +1,5 @@
-const CACHE = 'koshelek-v24';
-const ASSETS = ['./', './index.html', './styles.css?v=24', './storage.js?v=24', './data.js?v=24', './history.js?v=24', './goals.js?v=24', './plans.js?v=24', './planner.js?v=24', './nlp.js?v=24', './vendor-jsqr.js?v=24', './receipt.js?v=24', './app.js?v=24', './manifest.webmanifest', './icon-180.png', './icon-512.png'];
+const CACHE = 'koshelek-v25';
+const ASSETS = ['./', './index.html', './styles.css?v=25', './storage.js?v=25', './data.js?v=25', './history.js?v=25', './goals.js?v=25', './plans.js?v=25', './planner.js?v=25', './nlp.js?v=25', './vendor-jsqr.js?v=25', './receipt.js?v=25', './app.js?v=25', './manifest.webmanifest', './icon-180.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
