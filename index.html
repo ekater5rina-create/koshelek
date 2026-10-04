@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="Кошелёк">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="styles.css?v=22">
+<link rel="stylesheet" href="styles.css?v=23">
 <title>Кошелёк</title>
 </head>
 <body>
@@ -353,6 +353,10 @@
       <label class="form-field"><span>Тип</span><select id="plannedFormType"><option value="expense">Расход</option><option value="income">Доход</option></select></label>
       <label class="form-field"><span>Сумма, ₽</span><input id="plannedFormAmount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="10000"></label>
       <label class="form-field"><span>Дата</span><input id="plannedFormDate" type="date"></label>
+      <div class="date-quick" id="plannedDateQuick">
+        <button type="button" data-plan-date="today">Сегодня</button>
+        <button type="button" data-plan-date="tomorrow">Завтра</button>
+      </div>
       <label class="form-field"><span>Счёт</span><select id="plannedFormAccount"></select></label>
       <label class="form-field"><span>Категория</span><select id="plannedFormCategory"></select></label>
       <label class="form-field"><span>Комментарий</span><input id="plannedFormNote" type="text" placeholder="Например, страховка" autocomplete="off"></label>
@@ -426,15 +430,15 @@
 <input type="file" id="receiptGallery" accept="image/*" hidden>
 <div id="toast" class="toast" hidden></div>
 
-<script src="storage.js?v=22"></script>
-<script src="data.js?v=22"></script>
-<script src="history.js?v=22"></script>
-<script src="goals.js?v=22"></script>
-<script src="plans.js?v=22"></script>
-<script src="planner.js?v=22"></script>
-<script src="vendor-jsqr.js?v=22"></script>
-<script src="receipt.js?v=22"></script>
-<script src="nlp.js?v=22"></script>
-<script src="app.js?v=22"></script>
+<script src="storage.js?v=23"></script>
+<script src="data.js?v=23"></script>
+<script src="history.js?v=23"></script>
+<script src="goals.js?v=23"></script>
+<script src="plans.js?v=23"></script>
+<script src="planner.js?v=23"></script>
+<script src="vendor-jsqr.js?v=23"></script>
+<script src="receipt.js?v=23"></script>
+<script src="nlp.js?v=23"></script>
+<script src="app.js?v=23"></script>
 </body>
 </html>

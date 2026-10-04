@@ -9,7 +9,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 /* Версию видно в «Ещё» — так сразу понятно, доехало ли обновление до телефона. */
-const APP_VERSION = '22 · платёжный календарь';
+const APP_VERSION = '23 · быстрый выбор даты';
 
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const MONTHS_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
@@ -207,12 +207,21 @@ function renderPlannedCategoryOptions(selected) {
     .join('');
 }
 
+function syncPlannedDateButtons() {
+  const value = $('#plannedFormDate').value;
+  $$('#plannedDateQuick button').forEach((button) => {
+    const target = button.dataset.planDate === 'today' ? todayISO() : tomorrowISO();
+    button.classList.toggle('active', value === target);
+  });
+}
+
 function openPlannedForm(item = null) {
   ui.plannedId = item?.id || null;
   $('#plannedFormTitle').textContent = item ? 'Изменить план' : 'Новый платёж';
   $('#plannedFormType').value = item?.type || 'expense';
   $('#plannedFormAmount').value = item?.amount || '';
   $('#plannedFormDate').value = item?.date || tomorrowISO();
+  syncPlannedDateButtons();
   $('#plannedFormAccount').innerHTML = accounts().map((a) =>
     `<option value="${esc(a.id)}">${a.icon} ${esc(a.name)}</option>`
   ).join('');
@@ -2036,6 +2045,13 @@ $('#plannedFormCancel').onclick = () => ($('#plannedFormSheet').hidden = true);
 $('#plannedFormSave').onclick = savePlannedForm;
 $('#plannedFormDelete').onclick = deletePlannedFromForm;
 $('#plannedFormType').onchange = () => renderPlannedCategoryOptions();
+$('#plannedDateQuick').onclick = (e) => {
+  const button = e.target.closest('[data-plan-date]');
+  if (!button) return;
+  $('#plannedFormDate').value = button.dataset.planDate === 'today' ? todayISO() : tomorrowISO();
+  syncPlannedDateButtons();
+};
+$('#plannedFormDate').onchange = syncPlannedDateButtons;
 $('#camHome').onclick = openReceiptMenu;
 $('#scanClose').onclick = closeScan;
 $('#scanShot').onclick = shotFromScanner;
