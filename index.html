@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="Кошелёк">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="styles.css?v=28">
+<link rel="stylesheet" href="styles.css?v=29">
 <title>Кошелёк</title>
 </head>
 <body>
@@ -413,12 +413,15 @@
         <button type="button" data-plan-date="today">Сегодня</button>
         <button type="button" data-plan-date="tomorrow">Завтра</button>
       </div>
+      <label class="form-field" id="plannedRepeatField"><span>Повторение</span><select id="plannedFormRepeat"><option value="1">Один раз</option><option value="3">Каждый месяц · 3 месяца</option><option value="6">Каждый месяц · 6 месяцев</option><option value="12">Каждый месяц · 12 месяцев</option></select></label>
+      <div class="form-hint" id="plannedSeriesInfo" hidden></div>
       <label class="form-field"><span>Счёт</span><select id="plannedFormAccount"></select></label>
       <label class="form-field"><span>Категория</span><select id="plannedFormCategory"></select></label>
       <label class="form-field"><span>Комментарий</span><input id="plannedFormNote" type="text" placeholder="Например, страховка" autocomplete="off"></label>
       <button class="form-complete" id="plannedFormComplete" hidden>Оплачено сегодня</button>
       <div class="form-hint">«Сохранить» изменяет только план. Кнопка выполнения создаёт фактическую операцию сегодняшней датой и изменяет баланс счёта.</div>
       <button class="form-delete" id="plannedFormDelete" hidden>Удалить из календаря</button>
+      <button class="form-delete" id="plannedSeriesDelete" hidden>Удалить всю серию</button>
     </div>
   </div>
 </div>
@@ -487,15 +490,15 @@
 <input type="file" id="receiptGallery" accept="image/*" hidden>
 <div id="toast" class="toast" hidden></div>
 
-<script src="storage.js?v=28"></script>
-<script src="data.js?v=28"></script>
-<script src="history.js?v=28"></script>
-<script src="goals.js?v=28"></script>
-<script src="plans.js?v=28"></script>
-<script src="planner.js?v=28"></script>
-<script src="vendor-jsqr.js?v=28"></script>
-<script src="receipt.js?v=28"></script>
-<script src="nlp.js?v=28"></script>
-<script src="app.js?v=28"></script>
+<script src="storage.js?v=29"></script>
+<script src="data.js?v=29"></script>
+<script src="history.js?v=29"></script>
+<script src="goals.js?v=29"></script>
+<script src="plans.js?v=29"></script>
+<script src="planner.js?v=29"></script>
+<script src="vendor-jsqr.js?v=29"></script>
+<script src="receipt.js?v=29"></script>
+<script src="nlp.js?v=29"></script>
+<script src="app.js?v=29"></script>
 </body>
 </html>

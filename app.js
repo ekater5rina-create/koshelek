@@ -9,7 +9,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 /* Версию видно в «Ещё» — так сразу понятно, доехало ли обновление до телефона. */
-const APP_VERSION = '28 · достаточность финансового запаса';
+const APP_VERSION = '29 · ежемесячные планы';
 
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const MONTHS_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
@@ -167,6 +167,15 @@ function isoMonthsAfter(months) {
   const d = new Date();
   const day = d.getDate();
   d.setDate(1);
+  d.setMonth(d.getMonth() + months);
+  const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  d.setDate(Math.min(day, lastDay));
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function isoMonthsFrom(iso, months) {
+  const [year, month, day] = iso.split('-').map(Number);
+  const d = new Date(year, month - 1, 1);
   d.setMonth(d.getMonth() + months);
   const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
   d.setDate(Math.min(day, lastDay));
@@ -401,7 +410,7 @@ function plannedRow(p) {
   const signed = p.type === 'income' ? p.amount : -p.amount;
   return `<button class="tx" data-planned="${esc(p.id)}">
     <span class="ic" style="background:${meta.color}22">${meta.icon}</span>
-    <div><div class="tx-t">${esc(p.note || p.category)}</div><div class="tx-s">${esc(p.category)} · ${esc(acc ? acc.icon + ' ' + acc.name : 'Счёт не найден')}</div></div>
+    <div><div class="tx-t">${esc(p.note || p.category)}</div><div class="tx-s">${esc(p.category)} · ${esc(acc ? acc.icon + ' ' + acc.name : 'Счёт не найден')}${p.seriesId ? ' · 🔁' : ''}</div></div>
     <span class="tx-a ${signed > 0 ? 'pos' : ''}">${signed > 0 ? '+' : ''}${money(signed)}</span>
   </button>`;
 }
@@ -435,6 +444,11 @@ function openPlannedForm(item = null) {
   $('#plannedFormAmount').value = item?.amount || '';
   $('#plannedFormDate').value = item?.date || tomorrowISO();
   syncPlannedDateButtons();
+  $('#plannedRepeatField').hidden = !!item;
+  $('#plannedFormRepeat').value = '1';
+  const seriesInfo = $('#plannedSeriesInfo');
+  seriesInfo.hidden = !item?.seriesId;
+  seriesInfo.textContent = item?.seriesId ? `Ежемесячная серия · платёж ${item.seriesIndex || '—'} из ${item.seriesCount || '—'}` : '';
   $('#plannedFormAccount').innerHTML = accounts().map((a) =>
     `<option value="${esc(a.id)}">${a.icon} ${esc(a.name)}</option>`
   ).join('');
@@ -450,6 +464,10 @@ function openPlannedForm(item = null) {
   del.hidden = !item;
   del.dataset.confirm = '0';
   del.textContent = 'Удалить из календаря';
+  const seriesDel = $('#plannedSeriesDelete');
+  seriesDel.hidden = !item?.seriesId;
+  seriesDel.dataset.confirm = '0';
+  seriesDel.textContent = item?.seriesId ? `Удалить всю серию (${item.seriesCount || ''})` : 'Удалить всю серию';
   showSheet('#plannedFormSheet');
   setTimeout(() => $('#plannedFormAmount').focus(), 50);
 }
@@ -479,11 +497,22 @@ function savePlannedForm() {
   Store.state.planned = Store.state.planned || [];
   const current = Store.state.planned.find((p) => p.id === ui.plannedId);
   if (current) Object.assign(current, values);
-  else Store.state.planned.push({ id: uid('plan'), ...values, createdAt: Date.now() });
+  else {
+    const repeatCount = Number($('#plannedFormRepeat').value);
+    const count = [1, 3, 6, 12].includes(repeatCount) ? repeatCount : 1;
+    const seriesId = count > 1 ? uid('series') : null;
+    for (let i = 0; i < count; i++) {
+      Store.state.planned.push({
+        id: uid('plan'), ...values, date: isoMonthsFrom(values.date, i),
+        seriesId, seriesIndex: i + 1, seriesCount: count, createdAt: Date.now() + i,
+      });
+    }
+  }
   Store.save();
   $('#plannedFormSheet').hidden = true;
   render();
-  toast(current ? 'План обновлён' : 'Добавлено в календарь');
+  const createdCount = current ? 1 : Number($('#plannedFormRepeat').value);
+  toast(current ? 'План обновлён' : createdCount > 1 ? `Добавлено ${createdCount} платежей` : 'Добавлено в календарь');
 }
 
 function completePlannedToday() {
@@ -535,6 +564,22 @@ function deletePlannedFromForm() {
   $('#plannedFormSheet').hidden = true;
   render();
   toast('Удалено из календаря');
+}
+
+function deletePlannedSeries() {
+  const current = (Store.state.planned || []).find((p) => p.id === ui.plannedId);
+  if (!current?.seriesId) return;
+  const btn = $('#plannedSeriesDelete');
+  if (btn.dataset.confirm !== '1') {
+    btn.dataset.confirm = '1';
+    btn.textContent = 'Нажмите ещё раз: удалить всю серию';
+    return toast('Фактические операции останутся');
+  }
+  Store.state.planned = Store.state.planned.filter((p) => p.seriesId !== current.seriesId);
+  Store.save();
+  $('#plannedFormSheet').hidden = true;
+  render();
+  toast('Серия удалена из календаря');
 }
 
 /* ---------- Регулярные платежи ---------- */
@@ -2309,6 +2354,7 @@ $('#plannedFormCancel').onclick = () => ($('#plannedFormSheet').hidden = true);
 $('#plannedFormSave').onclick = savePlannedForm;
 $('#plannedFormComplete').onclick = completePlannedToday;
 $('#plannedFormDelete').onclick = deletePlannedFromForm;
+$('#plannedSeriesDelete').onclick = deletePlannedSeries;
 $('#plannedFormType').onchange = () => {
   renderPlannedCategoryOptions();
   const btn = $('#plannedFormComplete');
