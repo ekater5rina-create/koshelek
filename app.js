@@ -9,7 +9,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 /* Версию видно в «Ещё» — так сразу понятно, доехало ли обновление до телефона. */
-const APP_VERSION = '25 · прогноз на 90 дней';
+const APP_VERSION = '26 · сценарий крупной покупки';
 
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const MONTHS_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
@@ -200,7 +200,58 @@ function renderCalendarForecast(active) {
       <div><span>Минимум</span><b class="${f.minimum < 0 ? 'neg' : ''}">${money(f.minimum)}</b><small>${formatDate(f.minimumDate)}</small></div>
     </div>
     ${risk}
+    <button class="forecast-scenario" data-scenario="purchase">Проверить крупную покупку</button>
   </div>`;
+}
+
+function syncPurchaseScenarioButtons() {
+  const value = $('#purchaseScenarioDate').value;
+  $$('#purchaseScenarioQuick button').forEach((button) => {
+    const target = button.dataset.scenarioDate === 'today' ? todayISO() : isoAfter(Number(button.dataset.scenarioDate));
+    button.classList.toggle('active', value === target);
+  });
+}
+
+function openPurchaseScenario() {
+  const list = spendAccounts();
+  if (!list.length) return toast('Сначала добавьте повседневный счёт');
+  $('#purchaseScenarioAmount').value = '';
+  $('#purchaseScenarioDate').value = todayISO();
+  $('#purchaseScenarioAccount').innerHTML = list.map((a) =>
+    `<option value="${esc(a.id)}">${a.icon} ${esc(a.name)}</option>`
+  ).join('');
+  const last = Store.state.settings.lastAccountId;
+  $('#purchaseScenarioAccount').value = list.some((a) => a.id === last) ? last : list[0].id;
+  $('#purchaseScenarioResult').innerHTML = '';
+  syncPurchaseScenarioButtons();
+  showSheet('#purchaseScenarioSheet');
+  setTimeout(() => $('#purchaseScenarioAmount').focus(), 50);
+}
+
+function calculatePurchaseScenario() {
+  const amount = parseFloat($('#purchaseScenarioAmount').value.replace(',', '.'));
+  const date = $('#purchaseScenarioDate').value;
+  const accountId = $('#purchaseScenarioAccount').value;
+  if (!amount || amount <= 0) return toast('Укажите стоимость покупки');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return toast('Укажите дату покупки');
+  if (date < todayISO() || date > isoAfter(90)) return toast('Выберите дату в ближайшие 90 дней');
+
+  const active = plannedItems().filter((p) => p.status !== 'done');
+  const baseline = calendarForecast(active);
+  const scenario = calendarForecast(active.concat({ type: 'expense', amount, date, accountId }));
+  let verdict;
+  if (!scenario.firstNegative) {
+    verdict = `<div class="scenario-verdict ok"><b>Покупка укладывается в план</b><span>Минимальный свободный остаток составит ${money(scenario.minimum)}.</span></div>`;
+  } else if (baseline.firstNegative) {
+    const extra = Math.max(0, Math.abs(Math.min(0, scenario.minimum)) - Math.abs(Math.min(0, baseline.minimum)));
+    verdict = `<div class="scenario-verdict risk"><b>По текущему плану уже есть дефицит</b><span>После покупки максимальный дефицит составит ${money(Math.abs(scenario.minimum))}${extra ? ` — на ${money(extra)} больше` : ''}.</span></div>`;
+  } else {
+    verdict = `<div class="scenario-verdict risk"><b>Покупка создаст кассовый разрыв</b><span>С ${formatDate(scenario.firstNegative)} максимальный дефицит достигнет ${money(Math.abs(scenario.minimum))}.</span></div>`;
+  }
+  $('#purchaseScenarioResult').innerHTML = `${verdict}<div class="scenario-details">
+    <span>После покупки через 90 дней</span><b>${money(scenario.endBalance)}</b>
+    <span>Минимальный остаток</span><b>${money(scenario.minimum)} · ${formatDate(scenario.minimumDate)}</b>
+  </div><div class="form-hint">Это только расчёт: покупка не добавлена в календарь и не влияет на баланс.</div>`;
 }
 
 function renderCalendar() {
@@ -2006,6 +2057,9 @@ document.addEventListener('click', (e) => {
   const goto = e.target.closest('[data-goto]');
   if (goto) return go(goto.dataset.goto);
 
+  const scenario = e.target.closest('[data-scenario="purchase"]');
+  if (scenario) return openPurchaseScenario();
+
   const tx = e.target.closest('[data-tx]');
   if (tx) {
     const t = Store.state.transactions.find((x) => x.id === tx.dataset.tx);
@@ -2162,6 +2216,23 @@ $('#plannedDateQuick').onclick = (e) => {
   syncPlannedDateButtons();
 };
 $('#plannedFormDate').onchange = syncPlannedDateButtons;
+$('#purchaseScenarioCancel').onclick = () => ($('#purchaseScenarioSheet').hidden = true);
+$('#purchaseScenarioCalculate').onclick = calculatePurchaseScenario;
+$('#purchaseScenarioQuick').onclick = (e) => {
+  const button = e.target.closest('[data-scenario-date]');
+  if (!button) return;
+  $('#purchaseScenarioDate').value = button.dataset.scenarioDate === 'today'
+    ? todayISO()
+    : isoAfter(Number(button.dataset.scenarioDate));
+  syncPurchaseScenarioButtons();
+  $('#purchaseScenarioResult').innerHTML = '';
+};
+$('#purchaseScenarioDate').onchange = () => {
+  syncPurchaseScenarioButtons();
+  $('#purchaseScenarioResult').innerHTML = '';
+};
+$('#purchaseScenarioAmount').oninput = () => ($('#purchaseScenarioResult').innerHTML = '');
+$('#purchaseScenarioAccount').onchange = () => ($('#purchaseScenarioResult').innerHTML = '');
 $('#camHome').onclick = openReceiptMenu;
 $('#scanClose').onclick = closeScan;
 $('#scanShot').onclick = shotFromScanner;

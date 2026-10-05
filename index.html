@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="Кошелёк">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="styles.css?v=25">
+<link rel="stylesheet" href="styles.css?v=26">
 <title>Кошелёк</title>
 </head>
 <body>
@@ -341,6 +341,28 @@
   </div>
 </div>
 
+<!-- СЦЕНАРИЙ КРУПНОЙ ПОКУПКИ -->
+<div class="sheet" id="purchaseScenarioSheet" hidden>
+  <div class="sheet-card">
+    <div class="sheet-head">
+      <button class="sheet-x" id="purchaseScenarioCancel">Закрыть</button>
+      <div class="sheet-title">Сценарий покупки</div>
+      <button class="sheet-ok" id="purchaseScenarioCalculate">Рассчитать</button>
+    </div>
+    <div class="form-body">
+      <label class="form-field"><span>Стоимость покупки, ₽</span><input id="purchaseScenarioAmount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="100000"></label>
+      <label class="form-field"><span>Дата покупки</span><input id="purchaseScenarioDate" type="date"></label>
+      <div class="date-quick" id="purchaseScenarioQuick">
+        <button type="button" data-scenario-date="today">Сегодня</button>
+        <button type="button" data-scenario-date="30">Через 30 дней</button>
+      </div>
+      <label class="form-field"><span>С какого счёта</span><select id="purchaseScenarioAccount"></select></label>
+      <div class="form-hint">Расчёт использует общий остаток повседневных счетов и планы на ближайшие 90 дней. Сбережения не учитываются.</div>
+      <div id="purchaseScenarioResult"></div>
+    </div>
+  </div>
+</div>
+
 <!-- ПЛАНОВАЯ ОПЕРАЦИЯ -->
 <div class="sheet" id="plannedFormSheet" hidden>
   <div class="sheet-card">
@@ -431,15 +453,15 @@
 <input type="file" id="receiptGallery" accept="image/*" hidden>
 <div id="toast" class="toast" hidden></div>
 
-<script src="storage.js?v=25"></script>
-<script src="data.js?v=25"></script>
-<script src="history.js?v=25"></script>
-<script src="goals.js?v=25"></script>
-<script src="plans.js?v=25"></script>
-<script src="planner.js?v=25"></script>
-<script src="vendor-jsqr.js?v=25"></script>
-<script src="receipt.js?v=25"></script>
-<script src="nlp.js?v=25"></script>
-<script src="app.js?v=25"></script>
+<script src="storage.js?v=26"></script>
+<script src="data.js?v=26"></script>
+<script src="history.js?v=26"></script>
+<script src="goals.js?v=26"></script>
+<script src="plans.js?v=26"></script>
+<script src="planner.js?v=26"></script>
+<script src="vendor-jsqr.js?v=26"></script>
+<script src="receipt.js?v=26"></script>
+<script src="nlp.js?v=26"></script>
+<script src="app.js?v=26"></script>
 </body>
 </html>
