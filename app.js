@@ -9,7 +9,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 /* Версию видно в «Ещё» — так сразу понятно, доехало ли обновление до телефона. */
-const APP_VERSION = '26 · сценарий крупной покупки';
+const APP_VERSION = '27 · стресс-сценарий дохода';
 
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const MONTHS_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
@@ -163,6 +163,16 @@ function isoAfter(days) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+function isoMonthsAfter(months) {
+  const d = new Date();
+  const day = d.getDate();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + months);
+  const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  d.setDate(Math.min(day, lastDay));
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function calendarForecast(active, days = 90) {
   const today = todayISO();
   const endDate = isoAfter(days);
@@ -200,8 +210,50 @@ function renderCalendarForecast(active) {
       <div><span>Минимум</span><b class="${f.minimum < 0 ? 'neg' : ''}">${money(f.minimum)}</b><small>${formatDate(f.minimumDate)}</small></div>
     </div>
     ${risk}
-    <button class="forecast-scenario" data-scenario="purchase">Проверить крупную покупку</button>
+    <div class="forecast-actions">
+      <button class="forecast-scenario" data-scenario="purchase">Крупная покупка</button>
+      <button class="forecast-scenario" data-scenario="income">Снижение дохода</button>
+    </div>
   </div>`;
+}
+
+function openIncomeStress() {
+  if (!spendAccounts().length) return toast('Сначала добавьте повседневный счёт');
+  $('#incomeStressAmount').value = '';
+  $('#incomeStressMonths').value = '3';
+  $('#incomeStressResult').innerHTML = '';
+  showSheet('#incomeStressSheet');
+  setTimeout(() => $('#incomeStressAmount').focus(), 50);
+}
+
+function calculateIncomeStress() {
+  const monthlyLoss = parseFloat($('#incomeStressAmount').value.replace(',', '.'));
+  const months = Number($('#incomeStressMonths').value);
+  if (!monthlyLoss || monthlyLoss <= 0) return toast('Укажите снижение дохода');
+  if (![1, 2, 3].includes(months)) return toast('Выберите период от 1 до 3 месяцев');
+
+  const active = plannedItems().filter((p) => p.status !== 'done');
+  const baseline = calendarForecast(active);
+  const accountId = spendAccounts()[0].id;
+  const losses = Array.from({ length: months }, (_, i) => ({
+    type: 'expense', amount: monthlyLoss, date: isoMonthsAfter(i), accountId,
+  }));
+  const scenario = calendarForecast(active.concat(losses));
+  const totalLoss = monthlyLoss * months;
+  let verdict;
+  if (!scenario.firstNegative) {
+    verdict = `<div class="scenario-verdict ok"><b>Финансовый запас выдерживает снижение</b><span>Минимальный свободный остаток составит ${money(scenario.minimum)}.</span></div>`;
+  } else if (baseline.firstNegative) {
+    const extra = Math.max(0, Math.abs(Math.min(0, scenario.minimum)) - Math.abs(Math.min(0, baseline.minimum)));
+    verdict = `<div class="scenario-verdict risk"><b>По текущему плану уже есть дефицит</b><span>Снижение дохода увеличит максимальный дефицит до ${money(Math.abs(scenario.minimum))}${extra ? ` — на ${money(extra)} больше` : ''}.</span></div>`;
+  } else {
+    verdict = `<div class="scenario-verdict risk"><b>Снижение дохода создаст кассовый разрыв</b><span>С ${formatDate(scenario.firstNegative)} максимальный дефицит достигнет ${money(Math.abs(scenario.minimum))}.</span></div>`;
+  }
+  $('#incomeStressResult').innerHTML = `${verdict}<div class="scenario-details">
+    <span>Потеря дохода за период</span><b>${money(totalLoss)}</b>
+    <span>Остаток через 90 дней</span><b>${money(scenario.endBalance)}</b>
+    <span>Минимальный остаток</span><b>${money(scenario.minimum)} · ${formatDate(scenario.minimumDate)}</b>
+  </div><div class="form-hint">Это только стресс-тест: операции и плановые доходы не изменены.</div>`;
 }
 
 function syncPurchaseScenarioButtons() {
@@ -2057,8 +2109,9 @@ document.addEventListener('click', (e) => {
   const goto = e.target.closest('[data-goto]');
   if (goto) return go(goto.dataset.goto);
 
-  const scenario = e.target.closest('[data-scenario="purchase"]');
-  if (scenario) return openPurchaseScenario();
+  const scenario = e.target.closest('[data-scenario]');
+  if (scenario?.dataset.scenario === 'purchase') return openPurchaseScenario();
+  if (scenario?.dataset.scenario === 'income') return openIncomeStress();
 
   const tx = e.target.closest('[data-tx]');
   if (tx) {
@@ -2233,6 +2286,10 @@ $('#purchaseScenarioDate').onchange = () => {
 };
 $('#purchaseScenarioAmount').oninput = () => ($('#purchaseScenarioResult').innerHTML = '');
 $('#purchaseScenarioAccount').onchange = () => ($('#purchaseScenarioResult').innerHTML = '');
+$('#incomeStressCancel').onclick = () => ($('#incomeStressSheet').hidden = true);
+$('#incomeStressCalculate').onclick = calculateIncomeStress;
+$('#incomeStressAmount').oninput = () => ($('#incomeStressResult').innerHTML = '');
+$('#incomeStressMonths').onchange = () => ($('#incomeStressResult').innerHTML = '');
 $('#camHome').onclick = openReceiptMenu;
 $('#scanClose').onclick = closeScan;
 $('#scanShot').onclick = shotFromScanner;
