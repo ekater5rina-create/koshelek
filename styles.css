@@ -284,10 +284,12 @@ body.listening .mic { background: var(--red); animation: pulse 1.1s infinite; }
 .forecast-alert.ok { background: color-mix(in srgb, var(--green) 12%, transparent); color: var(--green); }
 .forecast-alert.risk { background: color-mix(in srgb, var(--red) 12%, transparent); color: var(--red); }
 .forecast-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.forecast-actions .forecast-scenario:nth-child(3) { grid-column: 1 / -1; }
 .forecast-scenario { min-height: 44px; padding: 7px; border: 1px solid var(--accent); border-radius: 11px; color: var(--accent); font-weight: 650; }
 .scenario-verdict { display: grid; gap: 5px; padding: 13px; border-radius: 12px; line-height: 1.35; }
 .scenario-verdict span { font-size: 13px; }
 .scenario-verdict.ok { background: color-mix(in srgb, var(--green) 12%, transparent); color: var(--green); }
+.scenario-verdict.caution { background: color-mix(in srgb, #d58b16 14%, transparent); color: #b56e00; }
 .scenario-verdict.risk { background: color-mix(in srgb, var(--red) 12%, transparent); color: var(--red); }
 .scenario-details { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; padding: 12px 2px 4px; font-size: 13px; }
 .scenario-details span { color: var(--muted); }

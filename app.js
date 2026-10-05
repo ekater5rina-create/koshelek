@@ -9,7 +9,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 /* Версию видно в «Ещё» — так сразу понятно, доехало ли обновление до телефона. */
-const APP_VERSION = '27 · стресс-сценарий дохода';
+const APP_VERSION = '28 · достаточность финансового запаса';
 
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const MONTHS_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
@@ -213,8 +213,61 @@ function renderCalendarForecast(active) {
     <div class="forecast-actions">
       <button class="forecast-scenario" data-scenario="purchase">Крупная покупка</button>
       <button class="forecast-scenario" data-scenario="income">Снижение дохода</button>
+      <button class="forecast-scenario" data-scenario="runway">На сколько хватит запаса</button>
     </div>
   </div>`;
+}
+
+function recentExpenseAverage(months = 3) {
+  const values = [];
+  const now = new Date();
+  for (let i = 1; i <= months; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = monthKey(d);
+    const rows = Store.state.transactions.filter((t) => t.type === 'expense' && t.date.slice(0, 7) === key);
+    if (rows.length) values.push(rows.reduce((sum, t) => sum + t.amount, 0));
+  }
+  return {
+    average: values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0,
+    months: values.length,
+  };
+}
+
+function openRunwayScenario() {
+  const history = recentExpenseAverage();
+  const reserve = savingsBalance();
+  $('#runwayReserve').value = reserve > 0 ? Math.round(reserve) : '';
+  $('#runwayExpenses').value = history.average > 0 ? Math.round(history.average) : '';
+  $('#runwaySourceHint').textContent = history.months
+    ? `Расходы подставлены по средней фактической сумме за ${history.months} ${plural(history.months, 'полный месяц', 'полных месяца', 'полных месяцев')}. Запас — остаток сберегательных счетов.`
+    : 'Истории расходов за полные месяцы недостаточно. Укажите необходимые ежемесячные расходы вручную. Запас можно скорректировать.';
+  $('#runwayResult').innerHTML = '';
+  showSheet('#runwaySheet');
+  setTimeout(() => (reserve > 0 ? $('#runwayExpenses') : $('#runwayReserve')).focus(), 50);
+}
+
+function calculateRunway() {
+  const reserve = parseFloat($('#runwayReserve').value.replace(',', '.'));
+  const expenses = parseFloat($('#runwayExpenses').value.replace(',', '.'));
+  if (isNaN(reserve) || reserve < 0) return toast('Укажите сумму финансового запаса');
+  if (!expenses || expenses <= 0) return toast('Укажите расходы в месяц');
+
+  const coverage = reserve / expenses;
+  let wholeMonths = Math.floor(coverage);
+  let days = Math.round((coverage - wholeMonths) * 30);
+  if (days === 30) { wholeMonths++; days = 0; }
+  const label = `${wholeMonths} ${plural(wholeMonths, 'месяц', 'месяца', 'месяцев')}${days ? ` и ${days} ${plural(days, 'день', 'дня', 'дней')}` : ''}`;
+  const tone = coverage >= 6 ? 'ok' : coverage >= 3 ? 'caution' : 'risk';
+  const title = coverage >= 6
+    ? 'Запас покрывает не менее шести месяцев'
+    : coverage >= 3
+      ? 'Запас покрывает от трёх до шести месяцев'
+      : 'Запас покрывает менее трёх месяцев';
+  $('#runwayResult').innerHTML = `<div class="scenario-verdict ${tone}"><b>${title}</b><span>При расходах ${money(expenses)} в месяц денег хватит примерно на ${label}.</span></div>
+    <div class="scenario-details">
+      <span>Формула</span><b>${money(reserve)} ÷ ${money(expenses)}</b>
+      <span>Покрытие</span><b>${coverage.toLocaleString('ru-RU', { maximumFractionDigits: 1 })} мес.</b>
+    </div><div class="form-hint">Расчёт не учитывает будущие доходы, доходность вкладов и инфляцию.</div>`;
 }
 
 function openIncomeStress() {
@@ -2112,6 +2165,7 @@ document.addEventListener('click', (e) => {
   const scenario = e.target.closest('[data-scenario]');
   if (scenario?.dataset.scenario === 'purchase') return openPurchaseScenario();
   if (scenario?.dataset.scenario === 'income') return openIncomeStress();
+  if (scenario?.dataset.scenario === 'runway') return openRunwayScenario();
 
   const tx = e.target.closest('[data-tx]');
   if (tx) {
@@ -2290,6 +2344,10 @@ $('#incomeStressCancel').onclick = () => ($('#incomeStressSheet').hidden = true)
 $('#incomeStressCalculate').onclick = calculateIncomeStress;
 $('#incomeStressAmount').oninput = () => ($('#incomeStressResult').innerHTML = '');
 $('#incomeStressMonths').onchange = () => ($('#incomeStressResult').innerHTML = '');
+$('#runwayCancel').onclick = () => ($('#runwaySheet').hidden = true);
+$('#runwayCalculate').onclick = calculateRunway;
+$('#runwayReserve').oninput = () => ($('#runwayResult').innerHTML = '');
+$('#runwayExpenses').oninput = () => ($('#runwayResult').innerHTML = '');
 $('#camHome').onclick = openReceiptMenu;
 $('#scanClose').onclick = closeScan;
 $('#scanShot').onclick = shotFromScanner;

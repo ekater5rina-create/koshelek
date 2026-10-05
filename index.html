@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="Кошелёк">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="styles.css?v=27">
+<link rel="stylesheet" href="styles.css?v=28">
 <title>Кошелёк</title>
 </head>
 <body>
@@ -341,6 +341,23 @@
   </div>
 </div>
 
+<!-- ДОСТАТОЧНОСТЬ ФИНАНСОВОГО ЗАПАСА -->
+<div class="sheet" id="runwaySheet" hidden>
+  <div class="sheet-card">
+    <div class="sheet-head">
+      <button class="sheet-x" id="runwayCancel">Закрыть</button>
+      <div class="sheet-title">Финансовый запас</div>
+      <button class="sheet-ok" id="runwayCalculate">Рассчитать</button>
+    </div>
+    <div class="form-body">
+      <label class="form-field"><span>Сумма финансового запаса, ₽</span><input id="runwayReserve" type="number" inputmode="decimal" min="0" step="0.01" placeholder="300000"></label>
+      <label class="form-field"><span>Необходимые расходы в месяц, ₽</span><input id="runwayExpenses" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="50000"></label>
+      <div class="form-hint" id="runwaySourceHint"></div>
+      <div id="runwayResult"></div>
+    </div>
+  </div>
+</div>
+
 <!-- СТРЕСС-СЦЕНАРИЙ СНИЖЕНИЯ ДОХОДА -->
 <div class="sheet" id="incomeStressSheet" hidden>
   <div class="sheet-card">
@@ -470,15 +487,15 @@
 <input type="file" id="receiptGallery" accept="image/*" hidden>
 <div id="toast" class="toast" hidden></div>
 
-<script src="storage.js?v=27"></script>
-<script src="data.js?v=27"></script>
-<script src="history.js?v=27"></script>
-<script src="goals.js?v=27"></script>
-<script src="plans.js?v=27"></script>
-<script src="planner.js?v=27"></script>
-<script src="vendor-jsqr.js?v=27"></script>
-<script src="receipt.js?v=27"></script>
-<script src="nlp.js?v=27"></script>
-<script src="app.js?v=27"></script>
+<script src="storage.js?v=28"></script>
+<script src="data.js?v=28"></script>
+<script src="history.js?v=28"></script>
+<script src="goals.js?v=28"></script>
+<script src="plans.js?v=28"></script>
+<script src="planner.js?v=28"></script>
+<script src="vendor-jsqr.js?v=28"></script>
+<script src="receipt.js?v=28"></script>
+<script src="nlp.js?v=28"></script>
+<script src="app.js?v=28"></script>
 </body>
 </html>
