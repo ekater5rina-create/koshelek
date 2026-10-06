@@ -9,7 +9,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 /* Версию видно в «Ещё» — так сразу понятно, доехало ли обновление до телефона. */
-const APP_VERSION = '29 · ежемесячные планы';
+const APP_VERSION = '30 · прогноз со сбережениями';
 
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const MONTHS_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
@@ -187,13 +187,13 @@ function calendarForecast(active, days = 90) {
   const endDate = isoAfter(days);
   const events = new Map();
   for (const p of active) {
-    if (p.date > endDate || accountById(p.accountId)?.savings) continue;
+    if (p.date > endDate) continue;
     const date = p.date < today ? today : p.date;
     const signed = p.type === 'income' ? p.amount : -p.amount;
     events.set(date, (events.get(date) || 0) + signed);
   }
 
-  const current = totalBalance();
+  const current = totalBalance() + savingsBalance();
   let balance = current;
   let minimum = current;
   let minimumDate = today;
@@ -212,7 +212,7 @@ function renderCalendarForecast(active) {
     ? `<div class="forecast-alert risk">⚠️ Кассовый разрыв с ${formatDate(f.firstNegative)}. Максимальный дефицит — ${money(Math.abs(Math.min(0, f.minimum)))}.</div>`
     : `<div class="forecast-alert ok">✓ По внесённым планам кассового разрыва в ближайшие 90 дней нет.</div>`;
   $('#calendarForecast').innerHTML = `<div class="forecast-card">
-    <div class="forecast-head"><b>Прогноз на 90 дней</b><span>без сбережений</span></div>
+    <div class="forecast-head"><b>Прогноз на 90 дней</b><span>включая сбережения</span></div>
     <div class="forecast-kpis">
       <div><span>Сейчас</span><b>${money(f.current)}</b></div>
       <div><span>Через 90 дней</span><b class="${f.endBalance < 0 ? 'neg' : ''}">${money(f.endBalance)}</b></div>
@@ -280,7 +280,7 @@ function calculateRunway() {
 }
 
 function openIncomeStress() {
-  if (!spendAccounts().length) return toast('Сначала добавьте повседневный счёт');
+  if (!accounts().length) return toast('Сначала добавьте счёт');
   $('#incomeStressAmount').value = '';
   $('#incomeStressMonths').value = '3';
   $('#incomeStressResult').innerHTML = '';
@@ -296,7 +296,7 @@ function calculateIncomeStress() {
 
   const active = plannedItems().filter((p) => p.status !== 'done');
   const baseline = calendarForecast(active);
-  const accountId = spendAccounts()[0].id;
+  const accountId = accounts()[0].id;
   const losses = Array.from({ length: months }, (_, i) => ({
     type: 'expense', amount: monthlyLoss, date: isoMonthsAfter(i), accountId,
   }));
@@ -327,8 +327,8 @@ function syncPurchaseScenarioButtons() {
 }
 
 function openPurchaseScenario() {
-  const list = spendAccounts();
-  if (!list.length) return toast('Сначала добавьте повседневный счёт');
+  const list = accounts();
+  if (!list.length) return toast('Сначала добавьте счёт');
   $('#purchaseScenarioAmount').value = '';
   $('#purchaseScenarioDate').value = todayISO();
   $('#purchaseScenarioAccount').innerHTML = list.map((a) =>
