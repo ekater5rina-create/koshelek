@@ -284,6 +284,13 @@ body.listening .mic { background: var(--red); animation: pulse 1.1s infinite; }
 .forecast-alert { margin-top: 10px; padding: 10px 11px; border-radius: 11px; font-size: 13px; line-height: 1.35; }
 .forecast-alert.ok { background: color-mix(in srgb, var(--green) 12%, transparent); color: var(--green); }
 .forecast-alert.risk { background: color-mix(in srgb, var(--red) 12%, transparent); color: var(--red); }
+.forecast-alert > b, .forecast-alert > span, .forecast-alert > small, .forecast-alert > em { display: block; }
+.forecast-alert > span { margin-top: 4px; }
+.forecast-alert > small { margin-top: 9px; color: var(--text); font-size: 12px; font-weight: 600; }
+.forecast-alert > em { margin-top: 8px; color: var(--muted); font-size: 11px; font-style: normal; }
+.forecast-driver { display: flex; align-items: start; justify-content: space-between; gap: 8px; margin-top: 5px; color: var(--text); font-size: 12px; }
+.forecast-driver span { min-width: 0; }
+.forecast-driver b { flex: none; white-space: nowrap; }
 .forecast-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
 .forecast-actions .forecast-scenario:nth-child(3) { grid-column: 1 / -1; }
 .forecast-scenario { min-height: 44px; padding: 7px; border: 1px solid var(--accent); border-radius: 11px; color: var(--accent); font-weight: 650; }

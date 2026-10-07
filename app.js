@@ -9,7 +9,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 /* Версию видно в «Ещё» — так сразу понятно, доехало ли обновление до телефона. */
-const APP_VERSION = '31 · цели без ложного разрыва';
+const APP_VERSION = '32 · расшифровка кассового разрыва';
 
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const MONTHS_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
@@ -193,7 +193,10 @@ function calendarForecast(active, days = 90) {
     if (p.type === 'goal') continue;
     const date = p.date < today ? today : p.date;
     const signed = p.type === 'income' ? p.amount : -p.amount;
-    events.set(date, (events.get(date) || 0) + signed);
+    const event = events.get(date) || { change: 0, items: [] };
+    event.change += signed;
+    event.items.push(p);
+    events.set(date, event);
   }
 
   const current = totalBalance() + savingsBalance();
@@ -201,19 +204,54 @@ function calendarForecast(active, days = 90) {
   let minimum = current;
   let minimumDate = today;
   let firstNegative = current < 0 ? today : null;
-  for (const [date, change] of [...events.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-    balance += change;
+  let firstNegativeBalance = current < 0 ? current : null;
+  let firstNegativeItems = [];
+  for (const [date, event] of [...events.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    balance += event.change;
     if (balance < minimum) { minimum = balance; minimumDate = date; }
-    if (balance < 0 && !firstNegative) firstNegative = date;
+    if (balance < 0 && !firstNegative) {
+      firstNegative = date;
+      firstNegativeBalance = balance;
+      firstNegativeItems = event.items.slice();
+    }
   }
-  return { current, endBalance: balance, minimum, minimumDate, firstNegative, count: events.size, endDate };
+  const drivers = active
+    .filter((p) => p.type === 'expense' && p.date <= endDate && (p.date < today ? today : p.date) <= minimumDate)
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 3);
+  return {
+    current, endBalance: balance, minimum, minimumDate, firstNegative,
+    firstNegativeBalance, firstNegativeItems, drivers, count: events.size, endDate,
+  };
+}
+
+function forecastDriverRow(p) {
+  const acc = accountById(p.accountId);
+  const label = p.note || p.category || 'Плановый расход';
+  return `<div class="forecast-driver"><span>${formatDate(p.date)} · ${esc(label)}${acc ? ` · ${esc(acc.icon + ' ' + acc.name)}` : ''}</span><b>−${money(p.amount)}</b></div>`;
 }
 
 function renderCalendarForecast(active) {
   const f = calendarForecast(active);
-  const risk = f.firstNegative
-    ? `<div class="forecast-alert risk">⚠️ Кассовый разрыв с ${formatDate(f.firstNegative)}. Максимальный дефицит — ${money(Math.abs(Math.min(0, f.minimum)))}.</div>`
-    : `<div class="forecast-alert ok">✓ По внесённым планам кассового разрыва в ближайшие 90 дней нет.</div>`;
+  let risk;
+  if (f.firstNegative) {
+    const needed = Math.abs(Math.min(0, f.minimum));
+    const breakExpenses = f.firstNegativeItems.filter((p) => p.type === 'expense');
+    const rows = (breakExpenses.length ? breakExpenses : f.drivers).slice(0, 3);
+    const causeTitle = breakExpenses.length
+      ? `Операции в день первого разрыва:`
+      : f.current < 0
+        ? 'Общий остаток всех кошельков уже ниже нуля. Крупнейшие предстоящие расходы:'
+        : 'Крупнейшие расходы до минимального остатка:';
+    risk = `<div class="forecast-alert risk">
+      <b>⚠️ Кассовый разрыв с ${formatDate(f.firstNegative)}</b>
+      <span>Чтобы покрыть весь прогнозный дефицит, нужно добавить не менее <strong>${money(needed)}</strong> до ${formatDate(f.firstNegative)}. Самый низкий остаток ожидается ${formatDate(f.minimumDate)}.</span>
+      ${rows.length ? `<small>${causeTitle}</small>${rows.map(forecastDriverRow).join('')}` : ''}
+      <em>Расчёт сделан по общей сумме всех кошельков и сбережений. Сохранение планов не блокируется.</em>
+    </div>`;
+  } else {
+    risk = `<div class="forecast-alert ok">✓ По внесённым планам кассового разрыва в ближайшие 90 дней нет.</div>`;
+  }
   $('#calendarForecast').innerHTML = `<div class="forecast-card">
     <div class="forecast-head"><b>Прогноз на 90 дней</b><span>включая сбережения</span></div>
     <div class="forecast-kpis">
