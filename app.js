@@ -9,7 +9,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 /* Версию видно в «Ещё» — так сразу понятно, доехало ли обновление до телефона. */
-const APP_VERSION = '30 · прогноз со сбережениями';
+const APP_VERSION = '31 · цели без ложного разрыва';
 
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const MONTHS_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
@@ -188,6 +188,9 @@ function calendarForecast(active, days = 90) {
   const events = new Map();
   for (const p of active) {
     if (p.date > endDate) continue;
+    // Пополнение цели — внутренний перевод в сбережения. Общая сумма денег
+    // не меняется, поэтому кассовый разрыв из-за него не возникает.
+    if (p.type === 'goal') continue;
     const date = p.date < today ? today : p.date;
     const signed = p.type === 'income' ? p.amount : -p.amount;
     events.set(date, (events.get(date) || 0) + signed);
@@ -374,9 +377,10 @@ function renderCalendar() {
   const completed = items.filter((p) => p.status === 'done').sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
   const income = active.filter((p) => p.type === 'income').reduce((s, p) => s + p.amount, 0);
   const expense = active.filter((p) => p.type === 'expense').reduce((s, p) => s + p.amount, 0);
+  const goals = active.filter((p) => p.type === 'goal').reduce((s, p) => s + p.amount, 0);
   renderCalendarForecast(active);
   $('#calendarSummary').textContent = active.length
-    ? `Доходы ${money(income)} · расходы ${money(expense)}`
+    ? `Доходы ${money(income)} · расходы ${money(expense)}${goals ? ` · в цели ${money(goals)}` : ''}`
     : 'Будущих платежей нет';
 
   if (!active.length && !completed.length) {
@@ -391,8 +395,12 @@ function renderCalendar() {
     const dt = new Date(date + 'T00:00:00');
     const dateLabel = `${dt.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}, ${DAYS[dt.getDay()]}`;
     const overdue = date < todayISO() ? ' · просрочено' : '';
-    const dayNet = rows.reduce((s, p) => s + (p.type === 'income' ? p.amount : -p.amount), 0);
-    return `<div class="day-head"><span>${dateLabel}${overdue}</span><span>${dayNet >= 0 ? '+' : ''}${money(dayNet)}</span></div>
+    const dayNet = rows.reduce((s, p) => s + (p.type === 'income' ? p.amount : p.type === 'goal' ? 0 : -p.amount), 0);
+    const dayGoals = rows.filter((p) => p.type === 'goal').reduce((s, p) => s + p.amount, 0);
+    const daySummary = dayGoals && dayNet === 0
+      ? `в цели ${money(dayGoals)}`
+      : `${dayNet >= 0 ? '+' : ''}${money(dayNet)}${dayGoals ? ` · в цели ${money(dayGoals)}` : ''}`;
+    return `<div class="day-head"><span>${dateLabel}${overdue}</span><span>${daySummary}</span></div>
       <div class="tx-group">${rows.map(plannedRow).join('')}</div>`;
   }).join('');
 
@@ -405,13 +413,21 @@ function renderCalendar() {
 }
 
 function plannedRow(p) {
-  const meta = catMeta(p.type, p.category);
+  const goal = p.type === 'goal' ? Store.state.goals.find((g) => g.id === p.goalId) : null;
+  const meta = p.type === 'goal'
+    ? { icon: goal?.icon || '🏁', color: '#4fb06a' }
+    : catMeta(p.type, p.category);
   const acc = accountById(p.accountId);
-  const signed = p.type === 'income' ? p.amount : -p.amount;
+  const signed = p.type === 'income' ? p.amount : p.type === 'goal' ? 0 : -p.amount;
+  const title = p.note || (p.type === 'goal' ? `В цель «${goal?.name || 'Цель'}»` : p.category);
+  const details = p.type === 'goal'
+    ? `${acc ? acc.icon + ' ' + acc.name : 'Счёт не найден'} → ${goal?.icon || '🏁'} ${goal?.name || 'Цель не найдена'}`
+    : `${p.category} · ${acc ? acc.icon + ' ' + acc.name : 'Счёт не найден'}`;
+  const amount = p.type === 'goal' ? `→ ${money(p.amount)}` : `${signed > 0 ? '+' : ''}${money(signed)}`;
   return `<button class="tx" data-planned="${esc(p.id)}">
     <span class="ic" style="background:${meta.color}22">${meta.icon}</span>
-    <div><div class="tx-t">${esc(p.note || p.category)}</div><div class="tx-s">${esc(p.category)} · ${esc(acc ? acc.icon + ' ' + acc.name : 'Счёт не найден')}${p.seriesId ? ' · 🔁' : ''}</div></div>
-    <span class="tx-a ${signed > 0 ? 'pos' : ''}">${signed > 0 ? '+' : ''}${money(signed)}</span>
+    <div><div class="tx-t">${esc(title)}</div><div class="tx-s">${esc(details)}${p.seriesId ? ' · 🔁' : ''}</div></div>
+    <span class="tx-a ${signed > 0 ? 'pos' : ''}">${amount}</span>
   </button>`;
 }
 
@@ -423,10 +439,41 @@ function tomorrowISO() {
 
 function renderPlannedCategoryOptions(selected) {
   const type = $('#plannedFormType').value;
+  if (type === 'goal') return;
   const list = catList(type);
   $('#plannedFormCategory').innerHTML = list
     .map((c) => `<option value="${esc(c.name)}"${c.name === selected ? ' selected' : ''}>${c.icon} ${esc(c.name)}</option>`)
     .join('');
+}
+
+function syncPlannedFormType(selectedAccountId, selectedGoalId) {
+  const type = $('#plannedFormType').value;
+  const isGoal = type === 'goal';
+  const list = isGoal ? spendAccounts() : accounts();
+  $('#plannedFormAccount').innerHTML = list.map((a) =>
+    `<option value="${esc(a.id)}">${a.icon} ${esc(a.name)}</option>`
+  ).join('');
+  const last = selectedAccountId || Store.state.settings.lastAccountId;
+  $('#plannedFormAccount').value = list.some((a) => a.id === last) ? last : list[0]?.id || '';
+  $('#plannedAccountLabel').textContent = isGoal ? 'С какого счёта' : 'Счёт';
+  $('#plannedGoalField').hidden = !isGoal;
+  $('#plannedCategoryField').hidden = isGoal;
+  if (isGoal) {
+    $('#plannedFormGoal').innerHTML = Store.state.goals.map((g) =>
+      `<option value="${esc(g.id)}">${g.icon} ${esc(g.name)}</option>`
+    ).join('');
+    $('#plannedFormGoal').value = Store.state.goals.some((g) => g.id === selectedGoalId)
+      ? selectedGoalId : Store.state.goals[0]?.id || '';
+  } else {
+    renderPlannedCategoryOptions();
+  }
+  const complete = $('#plannedFormComplete');
+  complete.dataset.confirm = '0';
+  complete.classList.remove('confirm');
+  complete.textContent = type === 'income' ? 'Получено сегодня' : isGoal ? 'Переведено сегодня' : 'Оплачено сегодня';
+  $('#plannedFormHint').textContent = isGoal
+    ? 'Пополнение цели — это перевод в сбережения. Оно увеличит цель, но не уменьшит общую сумму ваших денег.'
+    : '«Сохранить» изменяет только план. Кнопка выполнения создаёт фактическую операцию сегодняшней датой и изменяет баланс счёта.';
 }
 
 function syncPlannedDateButtons() {
@@ -449,17 +496,15 @@ function openPlannedForm(item = null) {
   const seriesInfo = $('#plannedSeriesInfo');
   seriesInfo.hidden = !item?.seriesId;
   seriesInfo.textContent = item?.seriesId ? `Ежемесячная серия · платёж ${item.seriesIndex || '—'} из ${item.seriesCount || '—'}` : '';
-  $('#plannedFormAccount').innerHTML = accounts().map((a) =>
-    `<option value="${esc(a.id)}">${a.icon} ${esc(a.name)}</option>`
-  ).join('');
-  $('#plannedFormAccount').value = item?.accountId || Store.state.settings.lastAccountId || accounts()[0]?.id || '';
-  renderPlannedCategoryOptions(item?.category);
+  syncPlannedFormType(item?.accountId, item?.goalId);
+  if ((item?.type || 'expense') !== 'goal') renderPlannedCategoryOptions(item?.category);
   $('#plannedFormNote').value = item?.note || '';
   const complete = $('#plannedFormComplete');
   complete.hidden = !item;
   complete.dataset.confirm = '0';
   complete.classList.remove('confirm');
-  complete.textContent = (item?.type || 'expense') === 'income' ? 'Получено сегодня' : 'Оплачено сегодня';
+  complete.textContent = (item?.type || 'expense') === 'income'
+    ? 'Получено сегодня' : item?.type === 'goal' ? 'Переведено сегодня' : 'Оплачено сегодня';
   const del = $('#plannedFormDelete');
   del.hidden = !item;
   del.dataset.confirm = '0';
@@ -476,17 +521,23 @@ function plannedFormValues() {
   const amount = parseFloat($('#plannedFormAmount').value.replace(',', '.'));
   const date = $('#plannedFormDate').value;
   const accountId = $('#plannedFormAccount').value;
-  const category = $('#plannedFormCategory').value;
+  const type = $('#plannedFormType').value;
+  const category = type === 'goal' ? 'Сбережения' : $('#plannedFormCategory').value;
+  const goalId = type === 'goal' ? $('#plannedFormGoal').value : null;
   if (!amount || amount <= 0) { toast('Укажите сумму больше нуля'); return null; }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { toast('Укажите дату'); return null; }
   if (!accountId) { toast('Выберите счёт'); return null; }
   if (!category) { toast('Выберите категорию'); return null; }
+  if (type === 'goal' && !Store.state.goals.some((g) => g.id === goalId)) { toast('Сначала создайте цель'); return null; }
+  if (type === 'goal' && !savingAccounts().length) { toast('Добавьте сберегательный счёт'); return null; }
+  if (type === 'goal' && accountById(accountId)?.savings) { toast('Выберите обычный счёт'); return null; }
   return {
-    type: $('#plannedFormType').value,
+    type,
     amount: Math.round(amount * 100) / 100,
     date,
     accountId,
     category,
+    goalId,
     note: $('#plannedFormNote').value.trim(),
   };
 }
@@ -526,30 +577,28 @@ function completePlannedToday() {
     btn.classList.add('confirm');
     btn.textContent = values.type === 'income'
       ? 'Нажмите ещё раз: зачислить сегодня'
-      : 'Нажмите ещё раз: списать сегодня';
+      : values.type === 'goal'
+        ? 'Нажмите ещё раз: перевести в цель'
+        : 'Нажмите ещё раз: списать сегодня';
     return;
   }
 
   Object.assign(p, values);
-  const t = {
-    id: uid('tx'),
-    type: p.type,
-    amount: p.amount,
-    accountId: p.accountId,
-    toAccountId: null,
-    category: p.category,
-    subcategory: '',
-    date: todayISO(),
-    note: p.note,
-    createdAt: Date.now(),
-  };
+  const goal = p.type === 'goal' ? Store.state.goals.find((g) => g.id === p.goalId) : null;
+  const t = p.type === 'goal'
+    ? saveToSavings(p.amount, p.accountId, p.note || `Цель: ${goal?.name || 'Цель'}`, { goalId: p.goalId })
+    : {
+      id: uid('tx'), type: p.type, amount: p.amount, accountId: p.accountId,
+      toAccountId: null, category: p.category, subcategory: '', date: todayISO(),
+      note: p.note, createdAt: Date.now(),
+    };
   Store.state.transactions.push(t);
   Object.assign(p, { status: 'done', actualTransactionId: t.id, completedAt: Date.now() });
   Store.state.settings.lastAccountId = p.accountId;
   Store.save();
   $('#plannedFormSheet').hidden = true;
   render();
-  toast(p.type === 'income' ? 'Доход зачислен' : 'Расход проведён');
+  toast(p.type === 'income' ? 'Доход зачислен' : p.type === 'goal' ? 'Цель пополнена' : 'Расход проведён');
 }
 
 function deletePlannedFromForm() {
@@ -2356,11 +2405,7 @@ $('#plannedFormComplete').onclick = completePlannedToday;
 $('#plannedFormDelete').onclick = deletePlannedFromForm;
 $('#plannedSeriesDelete').onclick = deletePlannedSeries;
 $('#plannedFormType').onchange = () => {
-  renderPlannedCategoryOptions();
-  const btn = $('#plannedFormComplete');
-  btn.dataset.confirm = '0';
-  btn.classList.remove('confirm');
-  btn.textContent = $('#plannedFormType').value === 'income' ? 'Получено сегодня' : 'Оплачено сегодня';
+  syncPlannedFormType();
 };
 $('#plannedDateQuick').onclick = (e) => {
   const button = e.target.closest('[data-plan-date]');
