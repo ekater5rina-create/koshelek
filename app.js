@@ -9,7 +9,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 /* Версию видно в «Ещё» — так сразу понятно, доехало ли обновление до телефона. */
-const APP_VERSION = '35 · подкатегории в календаре';
+const APP_VERSION = '36 · оплата из цели';
 
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const MONTHS_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
@@ -640,7 +640,7 @@ function completePlannedToday() {
 
   const goal = values.type === 'goal' ? Store.state.goals.find((g) => g.id === values.goalId) : null;
   const nextGoalAllocation = goal ? goalSaved(goal) + values.amount : null;
-  if (goal && nextGoalAllocation > goal.target) return toast(`До цели осталось ${money(Math.max(0, goal.target - goalSaved(goal)))}`);
+  if (goal && goalProgress(goal) + values.amount > goal.target) return toast(`До цели осталось ${money(Math.max(0, goal.target - goalProgress(goal)))}`);
   Object.assign(p, values);
   const t = p.type === 'goal'
     ? saveToSavings(p.amount, p.accountId, p.note || `Цель: ${goal?.name || 'Цель'}`, { goalId: p.goalId })
@@ -845,6 +845,8 @@ const goalMonthGen = (key) => {
 
 function goalRow(g) {
   const p = Advice.plan(g);
+  const allocated = goalSaved(g);
+  const spent = goalSpent(g);
   const pct = Math.min(100, Math.round((p.saved / g.target) * 100));
   const cls = p.done ? 'ok' : p.onTrack ? '' : 'risk';
   let line;
@@ -854,7 +856,7 @@ function goalRow(g) {
   return `<button class="goal" data-goal="${g.id}">
     <div class="goal-top"><span>${g.icon}</span><span class="goal-name">${esc(g.name)}</span><span class="goal-pct">${pct}%</span></div>
     <div class="goal-track"><div class="goal-fill ${cls}" style="width:${pct}%"></div></div>
-    <div class="goal-line">${money(p.saved)} из ${money(g.target)}</div>
+    <div class="goal-line">${money(p.saved)} из ${money(g.target)}${spent ? ` · в резерве ${money(allocated)} · потрачено ${money(spent)}` : ''}</div>
     <div class="goal-line">${line}</div>
   </button>`;
 }
@@ -965,17 +967,22 @@ function openGoal(id) {
   if (!g) return;
   ui.goalId = id;
   const p = Advice.plan(g);
+  const allocated = goalSaved(g);
+  const spent = goalSpent(g);
   const pct = Math.min(100, Math.round((p.saved / g.target) * 100));
   $('#goalTitle').textContent = `${g.icon} ${g.name}`;
 
   let html = `<div class="goal" style="border:0">
       <div class="goal-track"><div class="goal-fill ${p.done ? 'ok' : p.onTrack ? '' : 'risk'}" style="width:${pct}%"></div></div>
-      <div class="goal-line"><b>${money(p.saved)}</b> из ${money(g.target)} · осталось ${money(p.need)}</div>
+      <div class="goal-line"><b>${money(p.saved)}</b> из ${money(g.target)} · осталось подготовить ${money(p.need)}</div>
     </div>
+    <div class="g-row"><span>Сейчас в резерве цели</span><b>${money(allocated)}</b></div>
+    ${spent ? `<div class="g-row"><span>Уже оплачено из цели</span><b>${money(spent)}</b></div>` : ''}
     <div class="g-row"><span>Всего в сбережениях</span><b>${money(savingsBalance())}</b>
       <span class="sub">Цель закрепляет часть этой суммы, но не создаёт отдельный кошелёк.</span></div>
     <div class="g-actions goal-actions">
       <button class="g-btn" id="goalTopUp">Распределить деньги</button>
+      <button class="g-btn" id="goalSpend"${allocated > 0 ? '' : ' disabled'}>Оплатить из цели</button>
       <button class="g-btn ghost" id="goalEdit">Изменить</button>
     </div>`;
 
@@ -1032,7 +1039,91 @@ function openGoal(id) {
   $('#goalBody').innerHTML = html;
   showSheet('#goalSheet');
   $('#goalTopUp').onclick = () => topUpGoal(g);
+  $('#goalSpend').onclick = () => spendFromGoal(g);
   $('#goalEdit').onclick = () => editGoal(g);
+}
+
+function spendFromGoal(g) {
+  const allocated = goalSaved(g);
+  if (allocated <= 0) return toast('Сначала распределите деньги в цель');
+  const accs = savingAccounts();
+  if (!accs.length) return toast('Добавьте сберегательный счёт');
+  ui.goalId = g.id;
+  $('#goalSpendTitle').textContent = `Оплатить из «${g.name}»`;
+  $('#goalSpendAmount').value = String(Math.round(allocated));
+  $('#goalSpendDate').value = todayISO();
+  $('#goalSpendAccount').innerHTML = accs.map((a) =>
+    `<option value="${esc(a.id)}">${a.icon} ${esc(a.name)} · ${money(balanceOf(a.id))}</option>`
+  ).join('');
+  renderGoalSpendCategories();
+  $('#goalSpendNote').value = '';
+  $('#goalSpendHint').textContent = `В резерве цели ${money(allocated)}. Расход уменьшит сбережения и резерв цели на одну и ту же сумму.`;
+  const save = $('#goalSpendSave');
+  save.dataset.confirm = '0';
+  save.textContent = 'Записать';
+  $('#goalSheet').hidden = true;
+  showSheet('#goalSpendSheet');
+  setTimeout(() => $('#goalSpendAmount').select(), 50);
+}
+
+function renderGoalSpendCategories(selectedCategory, selectedSubcategory = '') {
+  const list = catList('expense');
+  $('#goalSpendCategory').innerHTML = list
+    .map((c) => `<option value="${esc(c.name)}"${c.name === selectedCategory ? ' selected' : ''}>${c.icon} ${esc(c.name)}</option>`)
+    .join('');
+  renderGoalSpendSubcategories(selectedSubcategory);
+}
+
+function renderGoalSpendSubcategories(selected = '') {
+  const category = $('#goalSpendCategory').value;
+  const meta = catList('expense').find((c) => c.name === category);
+  const subs = meta?.subs || [];
+  $('#goalSpendSubcategoryField').hidden = !subs.length;
+  $('#goalSpendSubcategory').innerHTML = [
+    '<option value="">Без подкатегории</option>',
+    ...subs.map((sub) => `<option value="${esc(sub)}"${sub === selected ? ' selected' : ''}>${esc(sub)}</option>`),
+  ].join('');
+}
+
+function saveGoalSpend() {
+  const g = Store.state.goals.find((x) => x.id === ui.goalId);
+  if (!g) return;
+  const amount = parseFloat(String($('#goalSpendAmount').value).replace(/\s/g, '').replace(',', '.'));
+  const date = $('#goalSpendDate').value;
+  const accountId = $('#goalSpendAccount').value;
+  const category = $('#goalSpendCategory').value;
+  const subcategory = $('#goalSpendSubcategory').value;
+  const allocated = goalSaved(g);
+  if (!amount || amount <= 0) return toast('Введите сумму больше нуля');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return toast('Укажите дату покупки');
+  if (amount > allocated) return toast(`В резерве цели только ${money(allocated)}`);
+  const account = accountById(accountId);
+  if (!account?.savings) return toast('Выберите сберегательный счёт');
+  if (amount > balanceOf(accountId)) return toast(`На счёте доступно ${money(balanceOf(accountId))}`);
+  if (!category) return toast('Выберите категорию');
+
+  const button = $('#goalSpendSave');
+  const rounded = Math.round(amount * 100) / 100;
+  const confirmKey = [rounded, date, accountId, category, subcategory, $('#goalSpendNote').value.trim()].join('|');
+  if (button.dataset.confirm !== confirmKey) {
+    button.dataset.confirm = confirmKey;
+    button.textContent = `Подтвердить ${money(amount)}`;
+    return;
+  }
+
+  Store.state.transactions.push({
+    id: uid('tx'), type: 'expense', amount: rounded, accountId, toAccountId: null,
+    category, subcategory: subcategory || '', date,
+    note: $('#goalSpendNote').value.trim() || `Покупка из цели «${g.name}»`,
+    goalId: g.id, goalSpend: true, createdAt: Date.now(),
+  });
+  setGoalAllocation(g, allocated - rounded);
+  Store.state.settings.lastAccountId = accountId;
+  Store.save();
+  $('#goalSpendSheet').hidden = true;
+  render();
+  openGoal(g.id);
+  toast(`Из цели оплачено ${money(rounded)}`);
 }
 
 function topUpGoal(g) {
@@ -1068,7 +1159,7 @@ function saveGoalTopUp() {
   const mode = $('#goalTopUpMode').value;
   if (!amount || amount <= 0) return toast('Введите сумму больше нуля');
   const current = goalSaved(g);
-  if (current + amount > g.target) return toast(`До цели осталось ${money(Math.max(0, g.target - current))}`);
+  if (goalProgress(g) + amount > g.target) return toast(`До цели осталось ${money(Math.max(0, g.target - goalProgress(g)))}`);
   if (mode === 'allocate') {
     const free = Math.max(0, unallocatedSavings());
     if (amount > free) return toast(`Не распределено только ${money(free)}`);
@@ -1138,7 +1229,7 @@ function saveGoalForm() {
   const existing = Store.state.goals.find((x) => x.id === ui.goalEditId);
   const maxAllocation = savingsBalance() - goalsAllocated(existing?.id || null);
   if (initial > Math.max(0, maxAllocation)) return toast(`Можно распределить не больше ${money(Math.max(0, maxAllocation))}`);
-  if (initial > target) return toast('Распределённая сумма не может быть больше цели');
+  if (initial + goalSpent(existing || {}) > target) return toast('Резерв вместе с уже оплаченным не может быть больше цели');
   if (existing) {
     Object.assign(existing, { name, target, deadline });
     setGoalAllocation(existing, initial);
@@ -1555,6 +1646,7 @@ function showNum(v) {
 function saveEntry() {
   const d = ui.draft;
   const amount = draftAmount(d);
+  const previous = d.id ? Store.state.transactions.find((t) => t.id === d.id) : null;
   if (amount < 0) return toast('Итог получился отрицательным — проверьте вычитание');
   if (!amount) return toast('Введите сумму');
   if (!d.accountId) return toast('Выберите счёт');
@@ -1562,6 +1654,14 @@ function saveEntry() {
     if (!d.toAccountId) return toast('Нажмите «Куда» и выберите счёт получателя');
     if (d.toAccountId === d.accountId) return toast('Счета «Откуда» и «Куда» должны отличаться');
   } else if (!d.category) return toast('Выберите категорию');
+  if (previous?.goalSpend) {
+    const goal = Store.state.goals.find((g) => g.id === previous.goalId);
+    if (d.type !== 'expense') return toast('Покупка из цели должна оставаться расходом');
+    if (!accountById(d.accountId)?.savings) return toast('Для покупки из цели нужен сберегательный счёт');
+    if (goal && amount > goalSaved(goal) + previous.amount) return toast(`В резерве цели доступно ${money(goalSaved(goal) + previous.amount)}`);
+    const available = balanceOf(d.accountId) + (d.accountId === previous.accountId ? previous.amount : 0);
+    if (amount > available) return toast(`На выбранном счёте доступно ${money(available)}`);
+  }
 
   const tx = {
     id: d.id || uid('tx'),
@@ -1574,9 +1674,16 @@ function saveEntry() {
     date: d.date,
     note: $('#noteInput').value.trim(),
     createdAt: d.createdAt || Date.now(),
+    ...(previous?.goalSpend ? { goalId: previous.goalId, goalSpend: true } : {}),
   };
   const i = Store.state.transactions.findIndex((t) => t.id === tx.id);
-  if (i >= 0) Store.state.transactions[i] = tx;
+  if (i >= 0) {
+    if (previous?.goalSpend) {
+      const goal = Store.state.goals.find((g) => g.id === previous.goalId);
+      if (goal) setGoalAllocation(goal, goalSaved(goal) + previous.amount - amount);
+    }
+    Store.state.transactions[i] = tx;
+  }
   else Store.state.transactions.push(tx);
   Store.state.settings.lastAccountId = tx.accountId;
   Store.save();
@@ -2471,11 +2578,16 @@ function openTxDetail(t) {
   };
   $('#txEdit').onclick = () => { $('#txSheet').hidden = true; openEntry(t); };
   $('#txRepeat').onclick = () => {
+    if (t.goalSpend) return toast('Повторную покупку оформите через цель');
     Store.state.transactions.push({ ...t, id: uid('tx'), date: todayISO(), createdAt: Date.now() });
     Store.save(); $('#txSheet').hidden = true; render(); toast('Операция скопирована на сегодня');
   };
   $('#txDelete').onclick = () => {
     if (!confirm('Удалить операцию?')) return;
+    if (t.goalSpend) {
+      const goal = Store.state.goals.find((g) => g.id === t.goalId);
+      if (goal) setGoalAllocation(goal, goalSaved(goal) + t.amount);
+    }
     Store.state.transactions = Store.state.transactions.filter((x) => x.id !== t.id);
     Store.save(); $('#txSheet').hidden = true; render(); toast('Удалено');
   };
@@ -2615,6 +2727,9 @@ $('#goalFormDelete').onclick = deleteGoalFromForm;
 $('#goalTopUpCancel').onclick = () => { $('#goalTopUpSheet').hidden = true; if (ui.goalId) openGoal(ui.goalId); };
 $('#goalTopUpSave').onclick = saveGoalTopUp;
 $('#goalTopUpMode').onchange = syncGoalTopUpMode;
+$('#goalSpendCancel').onclick = () => { $('#goalSpendSheet').hidden = true; if (ui.goalId) openGoal(ui.goalId); };
+$('#goalSpendSave').onclick = saveGoalSpend;
+$('#goalSpendCategory').onchange = () => renderGoalSpendSubcategories();
 $('#exportCsv').onclick = () => { download(`koshelek-${todayISO()}.csv`, toCsv(), 'text/csv;charset=utf-8'); toast('Файл выгружен'); };
 $('#makeBackup').onclick = doBackup;
 $('#snapshotsRow').onclick = openSnapshots;

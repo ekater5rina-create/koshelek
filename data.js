@@ -46,7 +46,7 @@ const emptyState = () => ({
   accounts: DEFAULT_ACCOUNTS.map((a) => ({ ...a })),
   transactions: [],
   planned: [],          // { id, type: expense|income|goal, amount, date, category, subcategory, accountId, goalId, note, seriesId, seriesIndex, seriesCount, status, actualTransactionId, createdAt, completedAt }
-  goals: [],            // { id, name, icon, target, allocated, deadline: "2027-06" }; allocated — часть реальных сбережений, закреплённая за целью
+  goals: [],            // { id, name, icon, target, allocated, deadline: "2027-06" }; оплаченные суммы считаются по операциям с goalSpend
   recurring: [],        // { id, cat, sub, amount, accountId, active }
   budgets: {},          // { "2026-08": { "Жизнедеятельность": 40000 } }
   settings: { theme: 'auto', currency: '₽', lastAccountId: 'acc_cash', backupRemind: true, lastBackupAt: 0, lastBackupCount: 0 },

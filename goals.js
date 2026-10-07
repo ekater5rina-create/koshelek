@@ -126,7 +126,7 @@ const Advice = {
      где в традиционно тяжёлые месяцы откладывается меньше. */
   plan(goal) {
     const cur = monthKey(new Date());
-    const saved = goalSaved(goal);
+    const saved = goalProgress(goal);
     const need = Math.max(0, goal.target - saved);
     const monthsLeft = goal.deadline ? Math.max(0, monthDiff(cur, goal.deadline) + 1) : null;
     const free = this.freeCash();
@@ -212,6 +212,10 @@ const legacyGoalSaved = (goal) =>
 
 /* Цель — не отдельный кошелёк, а виртуально закреплённая часть сбережений. */
 const goalSaved = (goal) => Number.isFinite(goal.allocated) ? goal.allocated : legacyGoalSaved(goal);
+const goalSpent = (goal) => Store.state.transactions
+  .filter((t) => t.goalSpend && t.goalId === goal.id && t.type === 'expense')
+  .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+const goalProgress = (goal) => goalSaved(goal) + goalSpent(goal);
 const goalsAllocated = (exceptId = null) => Store.state.goals
   .filter((g) => g.id !== exceptId)
   .reduce((sum, g) => sum + Math.max(0, goalSaved(g)), 0);

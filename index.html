@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="Кошелёк">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="styles.css?v=35">
+<link rel="stylesheet" href="styles.css?v=36">
 <title>Кошелёк</title>
 </head>
 <body>
@@ -475,6 +475,26 @@
   </div>
 </div>
 
+<!-- ЦЕЛЬ: ОПЛАТА ПОКУПКИ -->
+<div class="sheet" id="goalSpendSheet" hidden>
+  <div class="sheet-card">
+    <div class="sheet-head">
+      <button class="sheet-x" id="goalSpendCancel">Отмена</button>
+      <div class="sheet-title" id="goalSpendTitle">Оплатить из цели</div>
+      <button class="sheet-ok" id="goalSpendSave">Записать</button>
+    </div>
+    <div class="form-body">
+      <label class="form-field"><span>Сумма, ₽</span><input id="goalSpendAmount" type="number" inputmode="decimal" min="0.01" step="0.01"></label>
+      <label class="form-field"><span>Дата покупки</span><input id="goalSpendDate" type="date"></label>
+      <label class="form-field"><span>Сберегательный счёт</span><select id="goalSpendAccount"></select></label>
+      <label class="form-field"><span>Категория</span><select id="goalSpendCategory"></select></label>
+      <label class="form-field" id="goalSpendSubcategoryField"><span>Подкатегория</span><select id="goalSpendSubcategory"></select></label>
+      <label class="form-field"><span>Комментарий</span><input id="goalSpendNote" type="text" placeholder="Например, ноутбук" autocomplete="off"></label>
+      <div class="form-hint" id="goalSpendHint"></div>
+    </div>
+  </div>
+</div>
+
 <!-- УНИВЕРСАЛЬНЫЙ ВЫБОР -->
 <div class="sheet" id="pickerSheet" hidden>
   <div class="sheet-card">
@@ -493,15 +513,15 @@
 <input type="file" id="receiptGallery" accept="image/*" hidden>
 <div id="toast" class="toast" hidden></div>
 
-<script src="storage.js?v=35"></script>
-<script src="data.js?v=35"></script>
-<script src="history.js?v=35"></script>
-<script src="goals.js?v=35"></script>
-<script src="plans.js?v=35"></script>
-<script src="planner.js?v=35"></script>
-<script src="vendor-jsqr.js?v=35"></script>
-<script src="receipt.js?v=35"></script>
-<script src="nlp.js?v=35"></script>
-<script src="app.js?v=35"></script>
+<script src="storage.js?v=36"></script>
+<script src="data.js?v=36"></script>
+<script src="history.js?v=36"></script>
+<script src="goals.js?v=36"></script>
+<script src="plans.js?v=36"></script>
+<script src="planner.js?v=36"></script>
+<script src="vendor-jsqr.js?v=36"></script>
+<script src="receipt.js?v=36"></script>
+<script src="nlp.js?v=36"></script>
+<script src="app.js?v=36"></script>
 </body>
 </html>
