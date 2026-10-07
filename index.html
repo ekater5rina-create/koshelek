@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="Кошелёк">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="styles.css?v=32">
+<link rel="stylesheet" href="styles.css?v=33">
 <title>Кошелёк</title>
 </head>
 <body>
@@ -450,7 +450,7 @@
     <div class="form-body">
       <label class="form-field"><span>Название</span><input id="goalFormName" type="text" placeholder="Например, отпуск" autocomplete="off"></label>
       <label class="form-field"><span>Сумма цели, ₽</span><input id="goalFormTarget" type="number" inputmode="decimal" min="1" placeholder="300000"></label>
-      <label class="form-field"><span>Уже накоплено, ₽</span><input id="goalFormInitial" type="number" inputmode="decimal" min="0" placeholder="0"></label>
+      <label class="form-field"><span>Выделено из сбережений, ₽</span><input id="goalFormInitial" type="number" inputmode="decimal" min="0" placeholder="0"></label>
       <label class="form-field"><span>Срок</span><input id="goalFormDeadline" type="month"></label>
       <button class="form-delete" id="goalFormDelete" hidden>Удалить цель</button>
     </div>
@@ -466,9 +466,10 @@
       <button class="sheet-ok" id="goalTopUpSave">Добавить</button>
     </div>
     <div class="form-body">
+      <label class="form-field"><span>Как добавить</span><select id="goalTopUpMode"><option value="allocate">Выделить из имеющихся сбережений</option><option value="transfer">Перевести с другого кошелька</option></select></label>
       <label class="form-field"><span>Сумма, ₽</span><input id="goalTopUpAmount" type="number" inputmode="decimal" min="1"></label>
-      <label class="form-field"><span>С какого счёта</span><select id="goalTopUpAccount"></select></label>
-      <div class="form-hint">Деньги будут переведены на сберегательный счёт и зачтены в прогресс цели.</div>
+      <label class="form-field" id="goalTopUpAccountField"><span>С какого счёта</span><select id="goalTopUpAccount"></select></label>
+      <div class="form-hint" id="goalTopUpHint"></div>
     </div>
   </div>
 </div>
@@ -491,15 +492,15 @@
 <input type="file" id="receiptGallery" accept="image/*" hidden>
 <div id="toast" class="toast" hidden></div>
 
-<script src="storage.js?v=32"></script>
-<script src="data.js?v=32"></script>
-<script src="history.js?v=32"></script>
-<script src="goals.js?v=32"></script>
-<script src="plans.js?v=32"></script>
-<script src="planner.js?v=32"></script>
-<script src="vendor-jsqr.js?v=32"></script>
-<script src="receipt.js?v=32"></script>
-<script src="nlp.js?v=32"></script>
-<script src="app.js?v=32"></script>
+<script src="storage.js?v=33"></script>
+<script src="data.js?v=33"></script>
+<script src="history.js?v=33"></script>
+<script src="goals.js?v=33"></script>
+<script src="plans.js?v=33"></script>
+<script src="planner.js?v=33"></script>
+<script src="vendor-jsqr.js?v=33"></script>
+<script src="receipt.js?v=33"></script>
+<script src="nlp.js?v=33"></script>
+<script src="app.js?v=33"></script>
 </body>
 </html>

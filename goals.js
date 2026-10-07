@@ -202,11 +202,24 @@ const Advice = {
   },
 };
 
-/* Накоплено по цели — сумма операций, привязанных к ней.
-   Пополнение может быть переводом на сберегательный счёт или расходом
-   в категорию «Сбережения»; снятие обратно приходит доходом и вычитается. */
-const goalSaved = (goal) =>
+/* Старые версии считали цель по операциям. Сохраняем этот расчёт для
+   совместимости, пока пользователь впервые не изменит распределение цели. */
+const legacyGoalSaved = (goal) =>
   (goal.initial || 0) +
   Store.state.transactions
     .filter((t) => t.goalId === goal.id)
     .reduce((s, t) => s + (t.type === 'income' ? -t.amount : t.amount), 0);
+
+/* Цель — не отдельный кошелёк, а виртуально закреплённая часть сбережений. */
+const goalSaved = (goal) => Number.isFinite(goal.allocated) ? goal.allocated : legacyGoalSaved(goal);
+const goalsAllocated = (exceptId = null) => Store.state.goals
+  .filter((g) => g.id !== exceptId)
+  .reduce((sum, g) => sum + Math.max(0, goalSaved(g)), 0);
+const unallocatedSavings = () => savingsBalance() - goalsAllocated();
+
+function setGoalAllocation(goal, amount) {
+  goal.allocated = Math.round(Math.max(0, amount) * 100) / 100;
+  // После миграции начальная сумма и старые операции остаются в истории,
+  // но больше не участвуют в расчёте цели повторно.
+  goal.initial = 0;
+}

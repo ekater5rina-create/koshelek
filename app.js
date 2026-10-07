@@ -9,7 +9,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 /* Версию видно в «Ещё» — так сразу понятно, доехало ли обновление до телефона. */
-const APP_VERSION = '32 · расшифровка кассового разрыва';
+const APP_VERSION = '33 · цели как распределение сбережений';
 
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const MONTHS_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
@@ -621,8 +621,10 @@ function completePlannedToday() {
     return;
   }
 
+  const goal = values.type === 'goal' ? Store.state.goals.find((g) => g.id === values.goalId) : null;
+  const nextGoalAllocation = goal ? goalSaved(goal) + values.amount : null;
+  if (goal && nextGoalAllocation > goal.target) return toast(`До цели осталось ${money(Math.max(0, goal.target - goalSaved(goal)))}`);
   Object.assign(p, values);
-  const goal = p.type === 'goal' ? Store.state.goals.find((g) => g.id === p.goalId) : null;
   const t = p.type === 'goal'
     ? saveToSavings(p.amount, p.accountId, p.note || `Цель: ${goal?.name || 'Цель'}`, { goalId: p.goalId })
     : {
@@ -631,6 +633,7 @@ function completePlannedToday() {
       note: p.note, createdAt: Date.now(),
     };
   Store.state.transactions.push(t);
+  if (goal) setGoalAllocation(goal, nextGoalAllocation);
   Object.assign(p, { status: 'done', actualTransactionId: t.id, completedAt: Date.now() });
   Store.state.settings.lastAccountId = p.accountId;
   Store.save();
@@ -840,12 +843,14 @@ function goalRow(g) {
 }
 
 function renderGoals() {
-  const free = Advice.freeCash();
-  $('#goalsFree').innerHTML = free.months.length
-    ? `Свободных денег: <b>${money(free.value)}</b> в месяц (медиана за ${free.months.length} мес.)`
-    : 'Пока мало истории, чтобы оценить свободные деньги';
+  const savings = savingsBalance();
+  const allocated = goalsAllocated();
+  const free = savings - allocated;
+  $('#goalsFree').innerHTML = `Сбережения ${money(savings)} · ${free >= 0 ? 'не распределено' : 'не хватает'} <b>${money(Math.abs(free))}</b>`;
   $('#goalsList').innerHTML = Store.state.goals.length
-    ? `<div class="card">${Store.state.goals.map(goalRow).join('')}</div>`
+    ? `${free < 0 ? `<div class="forecast-alert risk goal-allocation-alert"><b>⚠️ По целям распределено больше, чем есть в сбережениях</b><span>Уменьшите распределение на ${money(Math.abs(free))} или пополните сбережения.</span></div>` : ''}
+      <div class="card">${Store.state.goals.map(goalRow).join('')}</div>
+      <div class="hint">Цели распределяют реальные сбережения между назначениями. Они не являются отдельными кошельками и не увеличивают общую сумму денег.</div>`
     : '<div class="card"><div class="empty">Целей нет. Нажмите «+» вверху — например, «Обучение», 300 000 ₽, к июню 2027</div></div>';
 }
 
@@ -950,8 +955,10 @@ function openGoal(id) {
       <div class="goal-track"><div class="goal-fill ${p.done ? 'ok' : p.onTrack ? '' : 'risk'}" style="width:${pct}%"></div></div>
       <div class="goal-line"><b>${money(p.saved)}</b> из ${money(g.target)} · осталось ${money(p.need)}</div>
     </div>
+    <div class="g-row"><span>Всего в сбережениях</span><b>${money(savingsBalance())}</b>
+      <span class="sub">Цель закрепляет часть этой суммы, но не создаёт отдельный кошелёк.</span></div>
     <div class="g-actions goal-actions">
-      <button class="g-btn" id="goalTopUp">Добавить сумму</button>
+      <button class="g-btn" id="goalTopUp">Распределить деньги</button>
       <button class="g-btn ghost" id="goalEdit">Изменить</button>
     </div>`;
 
@@ -1015,31 +1022,57 @@ function topUpGoal(g) {
   const p = Advice.plan(g);
   const def = p.flat || Math.max(1000, Math.round(p.need / 10));
   const accs = spendAccounts();
-  if (!accs.length) return toast('Сначала добавьте обычный счёт');
   ui.goalId = g.id;
-  $('#goalTopUpTitle').textContent = `Добавить в «${g.name}»`;
-  $('#goalTopUpAmount').value = String(Math.round(def));
+  $('#goalTopUpTitle').textContent = `Распределить в «${g.name}»`;
+  const free = Math.max(0, unallocatedSavings());
+  $('#goalTopUpMode').value = free > 0 ? 'allocate' : 'transfer';
+  $('#goalTopUpAmount').value = String(Math.round(free > 0 ? Math.min(def, free) : def));
   $('#goalTopUpAccount').innerHTML = accs.map((a) =>
     `<option value="${a.id}">${a.icon} ${esc(a.name)} · ${money(balanceOf(a.id))}</option>`
   ).join('');
+  syncGoalTopUpMode();
   $('#goalSheet').hidden = true;
   showSheet('#goalTopUpSheet');
   setTimeout(() => $('#goalTopUpAmount').select(), 50);
+}
+
+function syncGoalTopUpMode() {
+  const allocate = $('#goalTopUpMode').value === 'allocate';
+  $('#goalTopUpAccountField').hidden = allocate;
+  $('#goalTopUpHint').textContent = allocate
+    ? `Можно распределить ${money(Math.max(0, unallocatedSavings()))} из уже имеющихся сбережений. Балансы кошельков и платёжный календарь не изменятся.`
+    : 'Деньги будут переведены с выбранного кошелька в сбережения и одновременно закреплены за целью. Общая сумма денег не изменится.';
 }
 
 function saveGoalTopUp() {
   const g = Store.state.goals.find((x) => x.id === ui.goalId);
   if (!g) return;
   const amount = parseFloat(String($('#goalTopUpAmount').value).replace(/\s/g, '').replace(',', '.'));
-  const fromId = $('#goalTopUpAccount').value;
+  const mode = $('#goalTopUpMode').value;
   if (!amount || amount <= 0) return toast('Введите сумму больше нуля');
-  if (!accountById(fromId)) return toast('Выберите счёт');
-  Store.state.transactions.push(saveToSavings(amount, fromId, `Цель: ${g.name}`, { goalId: g.id }));
+  const current = goalSaved(g);
+  if (current + amount > g.target) return toast(`До цели осталось ${money(Math.max(0, g.target - current))}`);
+  if (mode === 'allocate') {
+    const free = Math.max(0, unallocatedSavings());
+    if (amount > free) return toast(`Не распределено только ${money(free)}`);
+    setGoalAllocation(g, current + amount);
+  } else {
+    const fromId = $('#goalTopUpAccount').value;
+    const from = accountById(fromId);
+    if (!from || from.savings) return toast('Выберите обычный кошелёк');
+    if (!savingAccounts().length) return toast('Добавьте сберегательный счёт');
+    if (amount > balanceOf(fromId)) return toast(`В кошельке доступно ${money(balanceOf(fromId))}`);
+    setGoalAllocation(g, current + amount);
+    Store.state.transactions.push(saveToSavings(amount, fromId, `Цель: ${g.name}`, { goalId: g.id }));
+    Store.state.settings.lastAccountId = fromId;
+  }
   Store.save();
   $('#goalTopUpSheet').hidden = true;
   render();
   openGoal(g.id);
-  toast(`Добавлено ${money(amount)} в «${g.name}»`);
+  toast(mode === 'allocate'
+    ? `${money(amount)} распределено в «${g.name}»`
+    : `${money(amount)} переведено в сбережения и цель`);
 }
 
 /* Отложить деньги: если есть сберегательный счёт — это перевод на него,
@@ -1067,7 +1100,7 @@ function openGoalForm(g) {
   $('#goalFormTitle').textContent = g ? `Изменить «${g.name}»` : 'Новая цель';
   $('#goalFormName').value = g?.name || '';
   $('#goalFormTarget').value = g?.target || '';
-  $('#goalFormInitial').value = g?.initial || 0;
+  $('#goalFormInitial').value = g ? goalSaved(g) : 0;
   $('#goalFormDeadline').value = g?.deadline || addMonths(monthKey(new Date()), 12);
   $('#goalFormDelete').hidden = !g;
   $('#goalFormDelete').dataset.confirm = '0';
@@ -1084,15 +1117,19 @@ function saveGoalForm() {
   const deadline = $('#goalFormDeadline').value;
   if (!name) return toast('Введите название цели');
   if (!target || target <= 0) return toast('Введите сумму цели больше нуля');
-  if (isNaN(initial) || initial < 0) return toast('Накопленная сумма не может быть отрицательной');
+  if (isNaN(initial) || initial < 0) return toast('Распределённая сумма не может быть отрицательной');
   const existing = Store.state.goals.find((x) => x.id === ui.goalEditId);
+  const maxAllocation = savingsBalance() - goalsAllocated(existing?.id || null);
+  if (initial > Math.max(0, maxAllocation)) return toast(`Можно распределить не больше ${money(Math.max(0, maxAllocation))}`);
+  if (initial > target) return toast('Распределённая сумма не может быть больше цели');
   if (existing) {
-    Object.assign(existing, { name, target, initial, deadline });
+    Object.assign(existing, { name, target, deadline });
+    setGoalAllocation(existing, initial);
   } else {
     const icons = ['🎓', '🏖️', '🚗', '🏠', '💍', '🎁'];
     Store.state.goals.push({
       id: uid('goal'), name, icon: icons[Store.state.goals.length % icons.length],
-      target, initial, deadline, createdAt: Date.now(),
+      target, allocated: initial, initial: 0, deadline, createdAt: Date.now(),
     });
   }
   Store.save();
@@ -1109,7 +1146,7 @@ function deleteGoalFromForm() {
   if (btn.dataset.confirm !== '1') {
     btn.dataset.confirm = '1';
     btn.textContent = 'Нажмите ещё раз, чтобы удалить';
-    return toast('Отложенные операции останутся');
+    return toast('Деньги останутся в сбережениях и станут нераспределёнными');
   }
   Store.state.goals = Store.state.goals.filter((x) => x.id !== g.id);
   Store.save();
@@ -2529,6 +2566,7 @@ $('#goalFormSave').onclick = saveGoalForm;
 $('#goalFormDelete').onclick = deleteGoalFromForm;
 $('#goalTopUpCancel').onclick = () => { $('#goalTopUpSheet').hidden = true; if (ui.goalId) openGoal(ui.goalId); };
 $('#goalTopUpSave').onclick = saveGoalTopUp;
+$('#goalTopUpMode').onchange = syncGoalTopUpMode;
 $('#exportCsv').onclick = () => { download(`koshelek-${todayISO()}.csv`, toCsv(), 'text/csv;charset=utf-8'); toast('Файл выгружен'); };
 $('#makeBackup').onclick = doBackup;
 $('#snapshotsRow').onclick = openSnapshots;
