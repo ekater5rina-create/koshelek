@@ -9,7 +9,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 /* Версию видно в «Ещё» — так сразу понятно, доехало ли обновление до телефона. */
-const APP_VERSION = '33 · цели как распределение сбережений';
+const APP_VERSION = '34 · фактический остаток без дохода';
 
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const MONTHS_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
@@ -2148,6 +2148,7 @@ function editAccount(id) {
   const a = accountById(id);
   const items = [
     { label: 'Переименовать', icon: '✏️', act: 'rename' },
+    { label: 'Установить фактический остаток', icon: '🎯', act: 'actual', note: 'без дохода или расхода' },
     { label: 'Сверить остаток', icon: '🧮', act: 'reconcile', note: `по учёту сейчас ${money(balanceOf(a.id))}` },
     { label: 'Изменить начальный остаток', icon: '💰', act: 'initial', note: money(a.initial || 0) },
     { label: a.savings ? 'Сделать обычным счётом' : 'Сделать сберегательным', icon: '🐖', act: 'savings',
@@ -2159,6 +2160,9 @@ function editAccount(id) {
     if (it.act === 'rename') {
       const v = prompt('Название счёта', a.name);
       if (v) a.name = v.trim();
+    } else if (it.act === 'actual') {
+      setActualBalance(a);
+      return;
     } else if (it.act === 'initial') {
       const v = prompt('Начальный остаток, ₽', String(a.initial || 0));
       if (v !== null && !isNaN(parseFloat(v))) a.initial = parseFloat(v.replace(',', '.'));
@@ -2179,6 +2183,32 @@ function editAccount(id) {
     Store.save();
     render();
   });
+}
+
+/*
+ * Устанавливаем фактический остаток через корректировку начального остатка.
+ * История операций остаётся неизменной, а в отчётах не появляется ложный доход
+ * или расход. Формула: новый начальный = старый начальный + (факт − учёт).
+ */
+function setActualBalance(a) {
+  const calc = balanceOf(a.id);
+  const v = prompt(
+    `Сколько сейчас в кошельке «${a.name}» на самом деле?\n\n` +
+    `По учёту получается ${money(calc)}. Корректировка не попадёт в доходы или расходы.`,
+    String(Math.round(calc)),
+  );
+  if (v === null) return;
+  const fact = parseFloat(String(v).replace(/\s/g, '').replace(',', '.'));
+  if (isNaN(fact)) return toast('Нужна сумма');
+
+  const diff = fact - calc;
+  if (Math.abs(diff) < 0.005) return toast('Остаток уже совпадает');
+
+  a.initial = Math.round((Number(a.initial || 0) + diff) * 100) / 100;
+  a.fact = { amount: fact, calc: fact, diff: 0, date: todayISO() };
+  Store.save();
+  render();
+  toast(`Остаток «${a.name}» установлен: ${money(fact)}. Отчёты не изменены`);
 }
 
 /* Сверка: спрашиваем, сколько денег в кошельке на самом деле. */
