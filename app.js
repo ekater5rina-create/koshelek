@@ -9,7 +9,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 /* Версию видно в «Ещё» — так сразу понятно, доехало ли обновление до телефона. */
-const APP_VERSION = '34 · фактический остаток без дохода';
+const APP_VERSION = '35 · подкатегории в календаре';
 
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const MONTHS_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
@@ -460,7 +460,7 @@ function plannedRow(p) {
   const title = p.note || (p.type === 'goal' ? `В цель «${goal?.name || 'Цель'}»` : p.category);
   const details = p.type === 'goal'
     ? `${acc ? acc.icon + ' ' + acc.name : 'Счёт не найден'} → ${goal?.icon || '🏁'} ${goal?.name || 'Цель не найдена'}`
-    : `${p.category} · ${acc ? acc.icon + ' ' + acc.name : 'Счёт не найден'}`;
+    : `${[p.category, p.subcategory, acc ? acc.icon + ' ' + acc.name : 'Счёт не найден'].filter(Boolean).join(' · ')}`;
   const amount = p.type === 'goal' ? `→ ${money(p.amount)}` : `${signed > 0 ? '+' : ''}${money(signed)}`;
   return `<button class="tx" data-planned="${esc(p.id)}">
     <span class="ic" style="background:${meta.color}22">${meta.icon}</span>
@@ -475,13 +475,27 @@ function tomorrowISO() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function renderPlannedCategoryOptions(selected) {
+function renderPlannedCategoryOptions(selected, selectedSubcategory = '') {
   const type = $('#plannedFormType').value;
   if (type === 'goal') return;
   const list = catList(type);
   $('#plannedFormCategory').innerHTML = list
     .map((c) => `<option value="${esc(c.name)}"${c.name === selected ? ' selected' : ''}>${c.icon} ${esc(c.name)}</option>`)
     .join('');
+  renderPlannedSubcategoryOptions(selectedSubcategory);
+}
+
+function renderPlannedSubcategoryOptions(selected = '') {
+  const type = $('#plannedFormType').value;
+  const category = $('#plannedFormCategory').value;
+  const meta = catList(type).find((c) => c.name === category);
+  const subs = meta?.subs || [];
+  const field = $('#plannedSubcategoryField');
+  field.hidden = type === 'goal' || !subs.length;
+  $('#plannedFormSubcategory').innerHTML = [
+    '<option value="">Без подкатегории</option>',
+    ...subs.map((sub) => `<option value="${esc(sub)}"${sub === selected ? ' selected' : ''}>${esc(sub)}</option>`),
+  ].join('');
 }
 
 function syncPlannedFormType(selectedAccountId, selectedGoalId) {
@@ -496,6 +510,7 @@ function syncPlannedFormType(selectedAccountId, selectedGoalId) {
   $('#plannedAccountLabel').textContent = isGoal ? 'С какого счёта' : 'Счёт';
   $('#plannedGoalField').hidden = !isGoal;
   $('#plannedCategoryField').hidden = isGoal;
+  $('#plannedSubcategoryField').hidden = isGoal;
   if (isGoal) {
     $('#plannedFormGoal').innerHTML = Store.state.goals.map((g) =>
       `<option value="${esc(g.id)}">${g.icon} ${esc(g.name)}</option>`
@@ -535,7 +550,7 @@ function openPlannedForm(item = null) {
   seriesInfo.hidden = !item?.seriesId;
   seriesInfo.textContent = item?.seriesId ? `Ежемесячная серия · платёж ${item.seriesIndex || '—'} из ${item.seriesCount || '—'}` : '';
   syncPlannedFormType(item?.accountId, item?.goalId);
-  if ((item?.type || 'expense') !== 'goal') renderPlannedCategoryOptions(item?.category);
+  if ((item?.type || 'expense') !== 'goal') renderPlannedCategoryOptions(item?.category, item?.subcategory);
   $('#plannedFormNote').value = item?.note || '';
   const complete = $('#plannedFormComplete');
   complete.hidden = !item;
@@ -561,6 +576,7 @@ function plannedFormValues() {
   const accountId = $('#plannedFormAccount').value;
   const type = $('#plannedFormType').value;
   const category = type === 'goal' ? 'Сбережения' : $('#plannedFormCategory').value;
+  const subcategory = type === 'goal' ? '' : $('#plannedFormSubcategory').value;
   const goalId = type === 'goal' ? $('#plannedFormGoal').value : null;
   if (!amount || amount <= 0) { toast('Укажите сумму больше нуля'); return null; }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { toast('Укажите дату'); return null; }
@@ -575,6 +591,7 @@ function plannedFormValues() {
     date,
     accountId,
     category,
+    subcategory,
     goalId,
     note: $('#plannedFormNote').value.trim(),
   };
@@ -629,7 +646,7 @@ function completePlannedToday() {
     ? saveToSavings(p.amount, p.accountId, p.note || `Цель: ${goal?.name || 'Цель'}`, { goalId: p.goalId })
     : {
       id: uid('tx'), type: p.type, amount: p.amount, accountId: p.accountId,
-      toAccountId: null, category: p.category, subcategory: '', date: todayISO(),
+      toAccountId: null, category: p.category, subcategory: p.subcategory || '', date: todayISO(),
       note: p.note, createdAt: Date.now(),
     };
   Store.state.transactions.push(t);
@@ -2512,6 +2529,7 @@ $('#plannedSeriesDelete').onclick = deletePlannedSeries;
 $('#plannedFormType').onchange = () => {
   syncPlannedFormType();
 };
+$('#plannedFormCategory').onchange = () => renderPlannedSubcategoryOptions();
 $('#plannedDateQuick').onclick = (e) => {
   const button = e.target.closest('[data-plan-date]');
   if (!button) return;
