@@ -9,7 +9,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 /* Версию видно в «Ещё» — так сразу понятно, доехало ли обновление до телефона. */
-const APP_VERSION = '36 · оплата из цели';
+const APP_VERSION = '37 · расходы по подстатьям';
 
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const MONTHS_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
@@ -110,6 +110,25 @@ function byCategory(key, type) {
     if (type === 'income' && f < 0) add(SAVINGS_OUT, t.amount);
   }
   return [...map.entries()].map(([name, sum]) => ({ name, sum })).sort((a, b) => b.sum - a.sum);
+}
+
+/* Детализация расходов по подстатьям. Перевод в сбережения показываем
+   отдельной подстатьёй, чтобы сумма блока совпадала с общими расходами. */
+function byExpenseSubcategory(key) {
+  const map = new Map();
+  const add = (category, subcategory, amount) => {
+    const cat = category || 'Без категории';
+    const sub = subcategory || 'Без подстатьи';
+    const id = `${cat}\u0000${sub}`;
+    const row = map.get(id) || { category: cat, subcategory: sub, sum: 0 };
+    row.sum += amount;
+    map.set(id, row);
+  };
+  for (const t of txOfMonth(key)) {
+    if (t.type === 'expense') add(t.category, t.subcategory, t.amount);
+    else if (savingsFlow(t) > 0) add(SAVINGS_IN, 'На сберегательные счета', t.amount);
+  }
+  return [...map.values()].sort((a, b) => b.sum - a.sum);
 }
 
 /* Айфон досылает отложенный клик уже после того, как открылось новое окно,
@@ -1414,6 +1433,27 @@ function renderReport() {
         .join('')
     : '<div class="empty">Нет данных за месяц</div>';
 
+  const subcategoryCard = $('#repSubcategoriesCard');
+  subcategoryCard.hidden = ui.repKind !== 'expense';
+  if (ui.repKind === 'expense') {
+    const rows = byExpenseSubcategory(ui.repMonth);
+    $('#repSubcategories').innerHTML = rows.length
+      ? rows.map((row) => {
+          const meta = catMeta('expense', row.category);
+          const pct = ringTotal ? (row.sum / ringTotal) * 100 : 0;
+          return `<button class="cat-row" data-report-subcat="${esc(row.subcategory)}" data-report-parent="${esc(row.category)}">
+            <div class="ic" style="background:${meta.color}22">${meta.icon}</div>
+            <div style="min-width:0">
+              <div class="tx-t">${esc(row.subcategory)}</div>
+              <div class="cat-sub">${esc(row.category)} · ${pct.toFixed(1)}%</div>
+              <div class="mini-track"><div class="mini-fill" style="width:${Math.min(100, pct)}%;background:${meta.color}"></div></div>
+            </div>
+            <div class="tx-a">${money(row.sum)}</div>
+          </button>`;
+        }).join('')
+      : '<div class="empty">Нет расходов по подстатьям</div>';
+  }
+
   // Год по месяцам
   const year = d.getFullYear();
   const rows = MONTHS_SHORT.map((_, i) => monthTotals(`${year}-${String(i + 1).padStart(2, '0')}`));
@@ -1459,6 +1499,41 @@ function openReportCategory(category) {
   $('#categoryBody').innerHTML = `<div class="category-summary">
       <b>${money(total)}</b>
       <span>${MONTHS[d.getMonth()].toLowerCase()} ${d.getFullYear()} · ${list.length} ${list.length === 1 ? 'операция' : 'операций'}</span>
+    </div>${rows || '<div class="empty">Операций нет</div>'}`;
+  showSheet('#categorySheet');
+}
+
+function reportSubcategoryTransactions(category, subcategory) {
+  return txOfMonth(ui.repMonth).filter((t) => {
+    if (t.type === 'expense') {
+      return (t.category || 'Без категории') === category
+        && (t.subcategory || 'Без подстатьи') === subcategory;
+    }
+    return category === SAVINGS_IN
+      && subcategory === 'На сберегательные счета'
+      && savingsFlow(t) > 0;
+  });
+}
+
+function openReportSubcategory(category, subcategory) {
+  const list = reportSubcategoryTransactions(category, subcategory);
+  const meta = catMeta('expense', category);
+  const d = parseKey(ui.repMonth);
+  const total = list.reduce((sum, t) => sum + t.amount, 0);
+  $('#categoryTitle').textContent = `${meta.icon} ${subcategory}`;
+
+  const groups = new Map();
+  for (const t of list) (groups.get(t.date) || groups.set(t.date, []).get(t.date)).push(t);
+  const rows = [...groups.entries()].map(([date, items]) => {
+    const dt = new Date(date + 'T00:00:00');
+    const dayTotal = items.reduce((sum, t) => sum + t.amount, 0);
+    return `<div class="day-head"><span>${dt.getDate()} ${MONTHS[dt.getMonth()].toLowerCase()}, ${DAYS[dt.getDay()]}</span><span>${money(dayTotal)}</span></div>
+      <div class="tx-group">${items.map(txRow).join('')}</div>`;
+  }).join('');
+
+  $('#categoryBody').innerHTML = `<div class="category-summary">
+      <b>${money(total)}</b>
+      <span>${esc(category)} · ${MONTHS[d.getMonth()].toLowerCase()} ${d.getFullYear()} · ${list.length} ${plural(list.length, 'операция', 'операции', 'операций')}</span>
     </div>${rows || '<div class="empty">Операций нет</div>'}`;
   showSheet('#categorySheet');
 }
@@ -2507,6 +2582,8 @@ document.addEventListener('click', (e) => {
   }
   const category = e.target.closest('[data-cat]');
   if (category) return openReportCategory(category.dataset.cat);
+  const subcategory = e.target.closest('[data-report-subcat]');
+  if (subcategory) return openReportSubcategory(subcategory.dataset.reportParent, subcategory.dataset.reportSubcat);
   const goal = e.target.closest('[data-goal]');
   if (goal) return openGoal(goal.dataset.goal);
 
