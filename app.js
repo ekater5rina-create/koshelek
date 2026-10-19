@@ -9,7 +9,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 /* Версию видно в «Ещё» — так сразу понятно, доехало ли обновление до телефона. */
-const APP_VERSION = '37 · расходы по подстатьям';
+const APP_VERSION = '38 · подстатьи внутри категории';
 
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const MONTHS_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
@@ -110,25 +110,6 @@ function byCategory(key, type) {
     if (type === 'income' && f < 0) add(SAVINGS_OUT, t.amount);
   }
   return [...map.entries()].map(([name, sum]) => ({ name, sum })).sort((a, b) => b.sum - a.sum);
-}
-
-/* Детализация расходов по подстатьям. Перевод в сбережения показываем
-   отдельной подстатьёй, чтобы сумма блока совпадала с общими расходами. */
-function byExpenseSubcategory(key) {
-  const map = new Map();
-  const add = (category, subcategory, amount) => {
-    const cat = category || 'Без категории';
-    const sub = subcategory || 'Без подстатьи';
-    const id = `${cat}\u0000${sub}`;
-    const row = map.get(id) || { category: cat, subcategory: sub, sum: 0 };
-    row.sum += amount;
-    map.set(id, row);
-  };
-  for (const t of txOfMonth(key)) {
-    if (t.type === 'expense') add(t.category, t.subcategory, t.amount);
-    else if (savingsFlow(t) > 0) add(SAVINGS_IN, 'На сберегательные счета', t.amount);
-  }
-  return [...map.values()].sort((a, b) => b.sum - a.sum);
 }
 
 /* Айфон досылает отложенный клик уже после того, как открылось новое окно,
@@ -1433,27 +1414,6 @@ function renderReport() {
         .join('')
     : '<div class="empty">Нет данных за месяц</div>';
 
-  const subcategoryCard = $('#repSubcategoriesCard');
-  subcategoryCard.hidden = ui.repKind !== 'expense';
-  if (ui.repKind === 'expense') {
-    const rows = byExpenseSubcategory(ui.repMonth);
-    $('#repSubcategories').innerHTML = rows.length
-      ? rows.map((row) => {
-          const meta = catMeta('expense', row.category);
-          const pct = ringTotal ? (row.sum / ringTotal) * 100 : 0;
-          return `<button class="cat-row" data-report-subcat="${esc(row.subcategory)}" data-report-parent="${esc(row.category)}">
-            <div class="ic" style="background:${meta.color}22">${meta.icon}</div>
-            <div style="min-width:0">
-              <div class="tx-t">${esc(row.subcategory)}</div>
-              <div class="cat-sub">${esc(row.category)} · ${pct.toFixed(1)}%</div>
-              <div class="mini-track"><div class="mini-fill" style="width:${Math.min(100, pct)}%;background:${meta.color}"></div></div>
-            </div>
-            <div class="tx-a">${money(row.sum)}</div>
-          </button>`;
-        }).join('')
-      : '<div class="empty">Нет расходов по подстатьям</div>';
-  }
-
   // Год по месяцам
   const year = d.getFullYear();
   const rows = MONTHS_SHORT.map((_, i) => monthTotals(`${year}-${String(i + 1).padStart(2, '0')}`));
@@ -1486,6 +1446,37 @@ function openReportCategory(category) {
   const d = parseKey(ui.repMonth);
   const total = list.reduce((sum, t) => sum + t.amount, 0);
   $('#categoryTitle').textContent = `${meta.icon} ${category}`;
+
+  if (ui.repKind === 'expense') {
+    const grouped = new Map();
+    for (const t of list) {
+      const subcategory = t.type === 'transfer'
+        ? 'На сберегательные счета'
+        : (t.subcategory || 'Без подстатьи');
+      grouped.set(subcategory, (grouped.get(subcategory) || 0) + t.amount);
+    }
+    const subcategories = [...grouped.entries()]
+      .map(([subcategory, sum]) => ({ subcategory, sum }))
+      .sort((a, b) => b.sum - a.sum);
+    const rows = subcategories.map((row) => {
+      const pct = total ? (row.sum / total) * 100 : 0;
+      return `<button class="cat-row" data-report-subcat="${esc(row.subcategory)}" data-report-parent="${esc(category)}">
+        <div class="ic" style="background:${meta.color}22">${meta.icon}</div>
+        <div style="min-width:0">
+          <div class="tx-t">${esc(row.subcategory)}</div>
+          <div class="cat-sub">${pct.toFixed(1)}% от категории</div>
+          <div class="mini-track"><div class="mini-fill" style="width:${Math.min(100, pct)}%;background:${meta.color}"></div></div>
+        </div>
+        <div class="tx-a">${money(row.sum)}</div>
+      </button>`;
+    }).join('');
+    $('#categoryBody').innerHTML = `<div class="category-summary">
+        <b>${money(total)}</b>
+        <span>${MONTHS[d.getMonth()].toLowerCase()} ${d.getFullYear()} · ${subcategories.length} ${plural(subcategories.length, 'подстатья', 'подстатьи', 'подстатей')}</span>
+      </div>${rows || '<div class="empty">Подстатей нет</div>'}`;
+    showSheet('#categorySheet');
+    return;
+  }
 
   const groups = new Map();
   for (const t of list) (groups.get(t.date) || groups.set(t.date, []).get(t.date)).push(t);
