@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="Кошелёк">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="styles.css?v=39">
+<link rel="stylesheet" href="styles.css?v=40">
 <title>Кошелёк</title>
 </head>
 <body>
@@ -233,10 +233,10 @@
       <div class="month-nav">
         <button class="chev" data-goto="more" aria-label="Назад">‹</button>
         <div class="month-name">План, <span id="budMonthName"></span></div>
-        <span style="width:2.2rem"></span>
+        <button class="link" id="autoBudget">Автоплан</button>
       </div>
     </header>
-    <div class="scroll"><div class="hint">Укажите план категории или нажмите на неё, чтобы распределить план по подстатьям.</div><div class="card"><div id="budgetList" class="rows"></div></div><div class="pad"></div></div>
+    <div class="scroll"><div class="hint">Нажмите на категорию, чтобы увидеть рекомендации по подстатьям. «Автоплан» заполнит только пустые планы и не изменит введённые вами суммы.<br><span id="budgetHistoryInfo"></span></div><div class="card"><div id="budgetList" class="rows"></div></div><div class="pad"></div></div>
   </section>
 
   <!-- ТАБ-БАР -->
@@ -513,15 +513,15 @@
 <input type="file" id="receiptGallery" accept="image/*" hidden>
 <div id="toast" class="toast" hidden></div>
 
-<script src="storage.js?v=39"></script>
-<script src="data.js?v=39"></script>
-<script src="history.js?v=39"></script>
-<script src="goals.js?v=39"></script>
-<script src="plans.js?v=39"></script>
-<script src="planner.js?v=39"></script>
-<script src="vendor-jsqr.js?v=39"></script>
-<script src="receipt.js?v=39"></script>
-<script src="nlp.js?v=39"></script>
-<script src="app.js?v=39"></script>
+<script src="storage.js?v=40"></script>
+<script src="data.js?v=40"></script>
+<script src="history.js?v=40"></script>
+<script src="goals.js?v=40"></script>
+<script src="plans.js?v=40"></script>
+<script src="planner.js?v=40"></script>
+<script src="vendor-jsqr.js?v=40"></script>
+<script src="receipt.js?v=40"></script>
+<script src="nlp.js?v=40"></script>
+<script src="app.js?v=40"></script>
 </body>
 </html>

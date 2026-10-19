@@ -9,7 +9,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 /* Версию видно в «Ещё» — так сразу понятно, доехало ли обновление до телефона. */
-const APP_VERSION = '39 · план-факт по подстатьям';
+const APP_VERSION = '40 · рекомендуемый план расходов';
 
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const MONTHS_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
@@ -135,6 +135,44 @@ function expenseSubcategoryFacts(key, category) {
     }
   }
   return map;
+}
+
+const expensePlanKey = (category, subcategory) => `${category}\u0000${subcategory || 'Без подстатьи'}`;
+
+function roundSuggestedPlan(amount) {
+  if (amount <= 0) return 0;
+  const step = amount >= 10000 ? 500 : amount >= 2000 ? 100 : 50;
+  return Math.ceil(amount / step) * step;
+}
+
+/* Рекомендации строятся только по собственной истории пользователя.
+   Регулярные расходы планируем по медиане активных месяцев, редкие —
+   как ежемесячное резервирование средней суммы за весь период. */
+function suggestedExpensePlans(n = 6) {
+  const months = Advice.recentMonths(n);
+  const result = new Map();
+  if (!months.length) return { months, result };
+  for (const [pair, byMonth] of Advice.byPair(months)) {
+    const separator = pair.indexOf(' / ');
+    const category = separator >= 0 ? pair.slice(0, separator) : pair;
+    const rawSubcategory = separator >= 0 ? pair.slice(separator + 3) : '';
+    const subcategory = rawSubcategory || 'Без подстатьи';
+    const values = months.map((month) => Number(byMonth[month] || 0));
+    const active = values.filter((value) => value > 0);
+    if (!active.length) continue;
+    const regular = active.length / months.length >= 2 / 3;
+    const base = regular
+      ? median(active)
+      : values.reduce((sum, value) => sum + value, 0) / months.length;
+    const reserve = regular ? 0.05 : 0.10;
+    result.set(expensePlanKey(category, subcategory), {
+      amount: roundSuggestedPlan(base * (1 + reserve)),
+      regular,
+      activeMonths: active.length,
+      months: months.length,
+    });
+  }
+  return { months, result };
 }
 
 /* Айфон досылает отложенный клик уже после того, как открылось новое окно,
@@ -1616,6 +1654,13 @@ function renderBudgets() {
   $('#budMonthName').textContent = `${MONTHS[d.getMonth()].toLowerCase()} ${d.getFullYear()}`;
   const budgets = Store.state.budgets[key] || {};
   const fact = Object.fromEntries(byCategory(key, 'expense').map((c) => [c.name, c.sum]));
+  const recommendations = suggestedExpensePlans();
+  const historyInfo = $('#budgetHistoryInfo');
+  if (historyInfo) {
+    historyInfo.textContent = recommendations.months.length
+      ? `Расчёт по ${recommendations.months.length} ${plural(recommendations.months.length, 'завершённому месяцу', 'завершённым месяцам', 'завершённым месяцам')}`
+      : 'Для рекомендации нужна история расходов';
+  }
   $('#budgetList').innerHTML = EXPENSE_CATEGORIES.map((c) => {
     const expanded = ui.budgetExpanded === c.name;
     const subFacts = expenseSubcategoryFacts(key, c.name);
@@ -1624,11 +1669,18 @@ function renderBudgets() {
     const mismatch = budgets[c.name] && subPlanTotal && Number(budgets[c.name]) !== subPlanTotal;
     const subNames = [...new Set([...c.subs, ...subFacts.keys(), ...Object.keys(subPlans)])];
     const subRows = expanded
-      ? `<div class="bud-sub-list">${subNames.map((sub) => `<div class="bud-sub-row">
-          <span><div class="bud-name">↳ ${esc(sub)}</div><div class="bud-fact">факт ${money(subFacts.get(sub) || 0)}</div></span>
-          <input type="number" inputmode="numeric" placeholder="план" value="${subPlans[sub] || ''}"
-            data-bud-cat="${esc(c.name)}" data-bud-sub="${esc(sub)}">
-        </div>`).join('')}</div>`
+      ? `<div class="bud-sub-list">${subNames.map((sub) => {
+          const recommendation = recommendations.result.get(expensePlanKey(c.name, sub));
+          const recommendationHtml = recommendation
+            ? `<button class="bud-rec" data-bud-recommend="${recommendation.amount}" data-bud-cat="${esc(c.name)}" data-bud-sub="${esc(sub)}">Рекомендуется ${money(recommendation.amount)}</button>
+              <span class="bud-rec-note">${recommendation.regular ? 'регулярно' : 'резерв на редкие траты'} · ${recommendation.activeMonths} из ${recommendation.months} мес.</span>`
+            : '<span class="bud-rec-note">пока недостаточно истории</span>';
+          return `<div class="bud-sub-row">
+            <span><div class="bud-name">↳ ${esc(sub)}</div><div class="bud-fact">факт ${money(subFacts.get(sub) || 0)}</div>${recommendationHtml}</span>
+            <input type="number" inputmode="numeric" placeholder="план" value="${subPlans[sub] || ''}"
+              data-bud-cat="${esc(c.name)}" data-bud-sub="${esc(sub)}">
+          </div>`;
+        }).join('')}</div>`
       : '';
     return `<div class="bud-group">
       <div class="bud-row">
@@ -1641,6 +1693,33 @@ function renderBudgets() {
       </div>${subRows}
     </div>`;
   }).join('');
+}
+
+function setSubBudget(key, category, subcategory, amount) {
+  Store.state.subBudgets = Store.state.subBudgets || {};
+  Store.state.subBudgets[key] = Store.state.subBudgets[key] || {};
+  Store.state.subBudgets[key][category] = Store.state.subBudgets[key][category] || {};
+  if (!amount || amount <= 0) delete Store.state.subBudgets[key][category][subcategory];
+  else Store.state.subBudgets[key][category][subcategory] = Math.round(amount);
+  if (!Object.keys(Store.state.subBudgets[key][category]).length) delete Store.state.subBudgets[key][category];
+  if (!Object.keys(Store.state.subBudgets[key]).length) delete Store.state.subBudgets[key];
+}
+
+function applyRecommendedBudget() {
+  const key = ui.repMonth;
+  const recommendations = suggestedExpensePlans();
+  let added = 0;
+  for (const [pair, recommendation] of recommendations.result) {
+    const [category, subcategory] = pair.split('\u0000');
+    if (!EXPENSE_CATEGORIES.some((item) => item.name === category)) continue;
+    if (subBudgetsOf(key, category)[subcategory]) continue;
+    setSubBudget(key, category, subcategory, recommendation.amount);
+    added++;
+  }
+  if (!added) return toast(recommendations.months.length ? 'Все доступные рекомендации уже заполнены' : 'Недостаточно истории для автоплана');
+  Store.save();
+  renderBudgets();
+  toast(`Автоплан заполнил ${added} ${plural(added, 'подстатью', 'подстатьи', 'подстатей')}`);
 }
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -2905,6 +2984,13 @@ $('#themeSeg').onclick = (e) => {
   render();
 };
 $('#budgetList').addEventListener('click', (e) => {
+  const recommendation = e.target.closest('[data-bud-recommend]');
+  if (recommendation) {
+    setSubBudget(ui.repMonth, recommendation.dataset.budCat, recommendation.dataset.budSub, Number(recommendation.dataset.budRecommend));
+    Store.save();
+    renderBudgets();
+    return toast('Рекомендованный план установлен');
+  }
   const button = e.target.closest('[data-bud-expand]');
   if (!button) return;
   ui.budgetExpanded = ui.budgetExpanded === button.dataset.budExpand ? null : button.dataset.budExpand;
@@ -2916,14 +3002,8 @@ $('#budgetList').addEventListener('change', (e) => {
     const key = ui.repMonth;
     const category = subInput.dataset.budCat;
     const subcategory = subInput.dataset.budSub;
-    Store.state.subBudgets = Store.state.subBudgets || {};
-    Store.state.subBudgets[key] = Store.state.subBudgets[key] || {};
-    Store.state.subBudgets[key][category] = Store.state.subBudgets[key][category] || {};
     const value = parseFloat(subInput.value);
-    if (!value || isNaN(value)) delete Store.state.subBudgets[key][category][subcategory];
-    else Store.state.subBudgets[key][category][subcategory] = value;
-    if (!Object.keys(Store.state.subBudgets[key][category]).length) delete Store.state.subBudgets[key][category];
-    if (!Object.keys(Store.state.subBudgets[key]).length) delete Store.state.subBudgets[key];
+    setSubBudget(key, category, subcategory, isNaN(value) ? 0 : value);
     Store.save();
     return;
   }
@@ -2936,6 +3016,7 @@ $('#budgetList').addEventListener('change', (e) => {
   else Store.state.budgets[key][inp.dataset.bud] = v;
   Store.save();
 });
+if ($('#autoBudget')) $('#autoBudget').onclick = applyRecommendedBudget;
 
 
 /* Показываем, где и как лежат данные, чтобы риск был виден заранее. */
