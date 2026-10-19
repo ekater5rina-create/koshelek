@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="Кошелёк">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="styles.css?v=38">
+<link rel="stylesheet" href="styles.css?v=39">
 <title>Кошелёк</title>
 </head>
 <body>
@@ -103,7 +103,7 @@
         </div>
       </div>
       <div class="card">
-        <div class="card-head"><span>По категориям</span><button class="link" data-goto="budgets">Лимиты</button></div>
+        <div class="card-head"><span>По категориям</span><button class="link" data-goto="budgets">План</button></div>
         <div id="repList" class="cat-list"></div>
       </div>
       <div class="card">
@@ -129,7 +129,7 @@
           <button class="row" data-goto="goals"><span class="row-ic">🏁</span><span>Цели накоплений</span><span class="row-go">›</span></button>
           <button class="row" data-goto="recurring"><span class="row-ic">🔁</span><span>Регулярные платежи</span><span class="row-val" id="recBadge"></span><span class="row-go">›</span></button>
           <button class="row" data-goto="fund"><span class="row-ic">🌊</span><span>Фонд нерегулярных трат</span><span class="row-val" id="fundBadge"></span><span class="row-go">›</span></button>
-          <button class="row" data-goto="budgets"><span class="row-ic">🎯</span><span>Лимиты по категориям</span><span class="row-go">›</span></button>
+          <button class="row" data-goto="budgets"><span class="row-ic">🎯</span><span>План расходов</span><span class="row-go">›</span></button>
         </div>
       </div>
       <div class="card">
@@ -232,11 +232,11 @@
     <header class="hdr small">
       <div class="month-nav">
         <button class="chev" data-goto="more" aria-label="Назад">‹</button>
-        <div class="month-name">Лимиты, <span id="budMonthName"></span></div>
+        <div class="month-name">План, <span id="budMonthName"></span></div>
         <span style="width:2.2rem"></span>
       </div>
     </header>
-    <div class="scroll"><div class="card"><div id="budgetList" class="rows"></div></div><div class="pad"></div></div>
+    <div class="scroll"><div class="hint">Укажите план категории или нажмите на неё, чтобы распределить план по подстатьям.</div><div class="card"><div id="budgetList" class="rows"></div></div><div class="pad"></div></div>
   </section>
 
   <!-- ТАБ-БАР -->
@@ -513,15 +513,15 @@
 <input type="file" id="receiptGallery" accept="image/*" hidden>
 <div id="toast" class="toast" hidden></div>
 
-<script src="storage.js?v=38"></script>
-<script src="data.js?v=38"></script>
-<script src="history.js?v=38"></script>
-<script src="goals.js?v=38"></script>
-<script src="plans.js?v=38"></script>
-<script src="planner.js?v=38"></script>
-<script src="vendor-jsqr.js?v=38"></script>
-<script src="receipt.js?v=38"></script>
-<script src="nlp.js?v=38"></script>
-<script src="app.js?v=38"></script>
+<script src="storage.js?v=39"></script>
+<script src="data.js?v=39"></script>
+<script src="history.js?v=39"></script>
+<script src="goals.js?v=39"></script>
+<script src="plans.js?v=39"></script>
+<script src="planner.js?v=39"></script>
+<script src="vendor-jsqr.js?v=39"></script>
+<script src="receipt.js?v=39"></script>
+<script src="nlp.js?v=39"></script>
+<script src="app.js?v=39"></script>
 </body>
 </html>

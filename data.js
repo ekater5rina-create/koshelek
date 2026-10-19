@@ -49,6 +49,7 @@ const emptyState = () => ({
   goals: [],            // { id, name, icon, target, allocated, deadline: "2027-06" }; оплаченные суммы считаются по операциям с goalSpend
   recurring: [],        // { id, cat, sub, amount, accountId, active }
   budgets: {},          // { "2026-08": { "Жизнедеятельность": 40000 } }
+  subBudgets: {},       // { "2026-08": { "Жизнедеятельность": { "Продукты": 25000 } } }
   settings: { theme: 'auto', currency: '₽', lastAccountId: 'acc_cash', backupRemind: true, lastBackupAt: 0, lastBackupCount: 0 },
 });
 

@@ -9,7 +9,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 /* Версию видно в «Ещё» — так сразу понятно, доехало ли обновление до телефона. */
-const APP_VERSION = '38 · подстатьи внутри категории';
+const APP_VERSION = '39 · план-факт по подстатьям';
 
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const MONTHS_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
@@ -29,6 +29,7 @@ const ui = {
   search: '',
   draft: null,
   plannedId: null,
+  budgetExpanded: null,
 };
 
 /* ---------- Помощники по данным ---------- */
@@ -110,6 +111,30 @@ function byCategory(key, type) {
     if (type === 'income' && f < 0) add(SAVINGS_OUT, t.amount);
   }
   return [...map.entries()].map(([name, sum]) => ({ name, sum })).sort((a, b) => b.sum - a.sum);
+}
+
+const subBudgetsOf = (key, category) => Store.state.subBudgets?.[key]?.[category] || {};
+
+function expenseForecast(key, fact) {
+  const current = monthKey(new Date());
+  if (key !== current) return fact;
+  const now = new Date();
+  const days = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  return Math.round((fact / Math.max(1, now.getDate())) * days);
+}
+
+function expenseSubcategoryFacts(key, category) {
+  const map = new Map();
+  for (const t of txOfMonth(key)) {
+    if (t.type === 'expense' && (t.category || 'Без категории') === category) {
+      const sub = t.subcategory || 'Без подстатьи';
+      map.set(sub, (map.get(sub) || 0) + t.amount);
+    } else if (category === SAVINGS_IN && savingsFlow(t) > 0) {
+      const sub = 'На сберегательные счета';
+      map.set(sub, (map.get(sub) || 0) + t.amount);
+    }
+  }
+  return map;
 }
 
 /* Айфон досылает отложенный клик уже после того, как открылось новое окно,
@@ -1370,7 +1395,18 @@ function renderReport() {
   $('#repMonthName').textContent = `${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
   $$('#repSeg .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.kind === ui.repKind));
 
-  const cats = byCategory(ui.repMonth, ui.repKind);
+  const actualCats = byCategory(ui.repMonth, ui.repKind);
+  const cats = [...actualCats];
+  if (ui.repKind === 'expense') {
+    const plannedCategories = new Set([
+      ...Object.keys(Store.state.budgets[ui.repMonth] || {}),
+      ...Object.keys(Store.state.subBudgets?.[ui.repMonth] || {}),
+    ]);
+    for (const name of plannedCategories) {
+      if (!cats.some((c) => c.name === name)) cats.push({ name, sum: 0 });
+    }
+    cats.sort((a, b) => b.sum - a.sum);
+  }
   const total = cats.reduce((s, c) => s + c.sum, 0);
   $('#donutSum').textContent = money(total);
   $('#donutCap').textContent = ui.repKind === 'expense' ? 'расходы за месяц' : 'доходы за месяц';
@@ -1398,7 +1434,8 @@ function renderReport() {
         .map((c) => {
           const m = catMeta(ui.repKind, c.name);
           const pct = ringTotal ? (Math.max(0, c.sum) / ringTotal) * 100 : 0;
-          const lim = ui.repKind === 'expense' ? budgets[c.name] : 0;
+          const subLimit = Object.values(subBudgetsOf(ui.repMonth, c.name)).reduce((sum, value) => sum + Number(value || 0), 0);
+          const lim = ui.repKind === 'expense' ? Number(budgets[c.name] || subLimit || 0) : 0;
           const over = lim && c.sum > lim;
           const sub = c.sum < 0 ? 'возврат на счёт' : `${pct.toFixed(1)}%${lim ? ` · лимит ${money(lim)}${over ? ' — превышен' : ''}` : ''}`;
           return `<button class="cat-row" data-cat="${esc(c.name)}">
@@ -1448,32 +1485,52 @@ function openReportCategory(category) {
   $('#categoryTitle').textContent = `${meta.icon} ${category}`;
 
   if (ui.repKind === 'expense') {
-    const grouped = new Map();
-    for (const t of list) {
-      const subcategory = t.type === 'transfer'
-        ? 'На сберегательные счета'
-        : (t.subcategory || 'Без подстатьи');
-      grouped.set(subcategory, (grouped.get(subcategory) || 0) + t.amount);
-    }
-    const subcategories = [...grouped.entries()]
-      .map(([subcategory, sum]) => ({ subcategory, sum }))
-      .sort((a, b) => b.sum - a.sum);
+    const grouped = expenseSubcategoryFacts(ui.repMonth, category);
+    const plans = subBudgetsOf(ui.repMonth, category);
+    const names = new Set([...grouped.keys(), ...Object.keys(plans)]);
+    const subcategories = [...names]
+      .map((subcategory) => ({ subcategory, sum: grouped.get(subcategory) || 0, plan: Number(plans[subcategory] || 0) }))
+      .sort((a, b) => b.sum - a.sum || b.plan - a.plan);
+    const explicitCategoryPlan = Number((Store.state.budgets[ui.repMonth] || {})[category] || 0);
+    const subcategoryPlanTotal = subcategories.reduce((sum, row) => sum + row.plan, 0);
+    const categoryPlan = explicitCategoryPlan || subcategoryPlanTotal;
+    const planMismatch = explicitCategoryPlan && subcategoryPlanTotal
+      ? subcategoryPlanTotal - explicitCategoryPlan
+      : 0;
+    const categoryForecast = expenseForecast(ui.repMonth, total);
     const rows = subcategories.map((row) => {
       const pct = total ? (row.sum / total) * 100 : 0;
+      const variance = row.plan ? row.sum - row.plan : null;
+      const forecast = expenseForecast(ui.repMonth, row.sum);
+      const over = variance != null && variance > 0;
+      const status = variance == null
+        ? 'план не задан'
+        : over
+          ? `перерасход +${money(variance)}`
+          : `остаток ${money(-variance)}`;
       return `<button class="cat-row" data-report-subcat="${esc(row.subcategory)}" data-report-parent="${esc(category)}">
         <div class="ic" style="background:${meta.color}22">${meta.icon}</div>
         <div style="min-width:0">
           <div class="tx-t">${esc(row.subcategory)}</div>
-          <div class="cat-sub">${pct.toFixed(1)}% от категории</div>
-          <div class="mini-track"><div class="mini-fill" style="width:${Math.min(100, pct)}%;background:${meta.color}"></div></div>
+          <div class="cat-sub">План ${row.plan ? money(row.plan) : '—'} · факт ${money(row.sum)}</div>
+          <div class="cat-sub ${over ? 'plan-over' : ''}">${status} · прогноз ${money(forecast)} · ${pct.toFixed(1)}% категории</div>
+          <div class="mini-track"><div class="mini-fill" style="width:${Math.min(100, row.plan ? (row.sum / row.plan) * 100 : pct)}%;background:${over ? 'var(--red)' : meta.color}"></div></div>
         </div>
         <div class="tx-a">${money(row.sum)}</div>
       </button>`;
     }).join('');
+    const categoryVariance = categoryPlan ? total - categoryPlan : null;
+    const categoryStatus = categoryVariance == null
+      ? 'план категории не задан'
+      : categoryVariance > 0
+        ? `перерасход +${money(categoryVariance)}`
+        : `остаток ${money(-categoryVariance)}`;
     $('#categoryBody').innerHTML = `<div class="category-summary">
         <b>${money(total)}</b>
+        <span>План ${categoryPlan ? money(categoryPlan) : '—'} · ${categoryStatus} · прогноз ${money(categoryForecast)}</span>
+        ${planMismatch ? `<span class="plan-over">⚠️ План подстатей отличается от плана категории на ${money(Math.abs(planMismatch))}</span>` : ''}
         <span>${MONTHS[d.getMonth()].toLowerCase()} ${d.getFullYear()} · ${subcategories.length} ${plural(subcategories.length, 'подстатья', 'подстатьи', 'подстатей')}</span>
-      </div>${rows || '<div class="empty">Подстатей нет</div>'}`;
+      </div>${rows || '<div class="empty">Задайте планы подстатей в разделе «Лимиты»</div>'}`;
     showSheet('#categorySheet');
     return;
   }
@@ -1559,13 +1616,31 @@ function renderBudgets() {
   $('#budMonthName').textContent = `${MONTHS[d.getMonth()].toLowerCase()} ${d.getFullYear()}`;
   const budgets = Store.state.budgets[key] || {};
   const fact = Object.fromEntries(byCategory(key, 'expense').map((c) => [c.name, c.sum]));
-  $('#budgetList').innerHTML = EXPENSE_CATEGORIES.map(
-    (c) => `<div class="bud-row">
-      <span class="row-ic">${c.icon}</span>
-      <span><div class="bud-name">${esc(c.name)}</div><div class="bud-fact">потрачено ${money(fact[c.name] || 0)}</div></span>
-      <input type="number" inputmode="numeric" placeholder="—" value="${budgets[c.name] || ''}" data-bud="${esc(c.name)}">
-    </div>`
-  ).join('');
+  $('#budgetList').innerHTML = EXPENSE_CATEGORIES.map((c) => {
+    const expanded = ui.budgetExpanded === c.name;
+    const subFacts = expenseSubcategoryFacts(key, c.name);
+    const subPlans = subBudgetsOf(key, c.name);
+    const subPlanTotal = Object.values(subPlans).reduce((sum, value) => sum + Number(value || 0), 0);
+    const mismatch = budgets[c.name] && subPlanTotal && Number(budgets[c.name]) !== subPlanTotal;
+    const subNames = [...new Set([...c.subs, ...subFacts.keys(), ...Object.keys(subPlans)])];
+    const subRows = expanded
+      ? `<div class="bud-sub-list">${subNames.map((sub) => `<div class="bud-sub-row">
+          <span><div class="bud-name">↳ ${esc(sub)}</div><div class="bud-fact">факт ${money(subFacts.get(sub) || 0)}</div></span>
+          <input type="number" inputmode="numeric" placeholder="план" value="${subPlans[sub] || ''}"
+            data-bud-cat="${esc(c.name)}" data-bud-sub="${esc(sub)}">
+        </div>`).join('')}</div>`
+      : '';
+    return `<div class="bud-group">
+      <div class="bud-row">
+        <span class="row-ic">${c.icon}</span>
+        <button class="bud-expand" data-bud-expand="${esc(c.name)}">
+          <div class="bud-name">${esc(c.name)} <span class="bud-arrow">${expanded ? '⌄' : '›'}</span></div>
+          <div class="bud-fact">факт ${money(fact[c.name] || 0)}${subPlanTotal ? ` · план подстатей ${money(subPlanTotal)}` : ''}${mismatch ? ' · ⚠️ не сходится' : ''}</div>
+        </button>
+        <input type="number" inputmode="numeric" placeholder="план" value="${budgets[c.name] || ''}" data-bud="${esc(c.name)}">
+      </div>${subRows}
+    </div>`;
+  }).join('');
 }
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -2829,7 +2904,29 @@ $('#themeSeg').onclick = (e) => {
   Store.save();
   render();
 };
+$('#budgetList').addEventListener('click', (e) => {
+  const button = e.target.closest('[data-bud-expand]');
+  if (!button) return;
+  ui.budgetExpanded = ui.budgetExpanded === button.dataset.budExpand ? null : button.dataset.budExpand;
+  renderBudgets();
+});
 $('#budgetList').addEventListener('change', (e) => {
+  const subInput = e.target.closest('[data-bud-sub]');
+  if (subInput) {
+    const key = ui.repMonth;
+    const category = subInput.dataset.budCat;
+    const subcategory = subInput.dataset.budSub;
+    Store.state.subBudgets = Store.state.subBudgets || {};
+    Store.state.subBudgets[key] = Store.state.subBudgets[key] || {};
+    Store.state.subBudgets[key][category] = Store.state.subBudgets[key][category] || {};
+    const value = parseFloat(subInput.value);
+    if (!value || isNaN(value)) delete Store.state.subBudgets[key][category][subcategory];
+    else Store.state.subBudgets[key][category][subcategory] = value;
+    if (!Object.keys(Store.state.subBudgets[key][category]).length) delete Store.state.subBudgets[key][category];
+    if (!Object.keys(Store.state.subBudgets[key]).length) delete Store.state.subBudgets[key];
+    Store.save();
+    return;
+  }
   const inp = e.target.closest('[data-bud]');
   if (!inp) return;
   const key = ui.repMonth;
